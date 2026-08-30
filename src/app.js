@@ -93,6 +93,7 @@ const elements = {
   loadedCommit: document.querySelector("#loadedCommit"),
   loadedTensors: document.querySelector("#loadedTensors"),
   loadedShards: document.querySelector("#loadedShards"),
+  checkpointNote: document.querySelector("#checkpointNote"),
   predictionList: document.querySelector("#predictionList"),
   predictionCount: document.querySelector("#predictionCount"),
   debugCaseSelect: document.querySelector("#debugCaseSelect"),
@@ -1401,32 +1402,41 @@ function focusGraphNode(nodeId) {
 
 function updateSummary() {
   const { stats } = state.model;
-  const checkpointElements = stats.checkpointElements ?? stats.totalParameters ?? 0;
-  const checkpointTensors = stats.checkpointTensors ?? stats.parameterTensors ?? 0;
+  const resolver = state.model.resolver ?? {};
+  const checkpointElements = stats.checkpointElements;
+  const checkpointTensors = stats.checkpointTensors;
   const topology = state.model.forwardTopology ?? {};
   const validation = state.model.validation ?? {};
   elements.modelTitle.textContent = state.model.name;
   elements.modelType.textContent = state.model.description || state.model.type;
   elements.totalParameters.textContent = formatCount(checkpointElements);
-  elements.totalParameters.title = `${new Intl.NumberFormat().format(checkpointElements)} exact stored elements; ${new Intl.NumberFormat().format(stats.recognizedBufferElements ?? 0)} belong to recognized buffers`;
+  elements.totalParameters.title = Number.isFinite(checkpointElements)
+    ? `${new Intl.NumberFormat().format(checkpointElements)} exact stored elements; ${new Intl.NumberFormat().format(stats.recognizedBufferElements ?? 0)} belong to recognized buffers`
+    : "Exact checkpoint element counts are unavailable at this resolver tier.";
   const recognizedBufferElements = stats.recognizedBufferElements ?? 0;
-  elements.checkpointBreakdown.textContent = recognizedBufferElements
+  elements.checkpointBreakdown.textContent = !Number.isFinite(checkpointElements)
+    ? `${resolver.label ?? "Partial metadata"} · exact elements unavailable`
+    : recognizedBufferElements
     ? `${formatCount(Math.max(0, checkpointElements - recognizedBufferElements))} parameter-like · ${formatCount(recognizedBufferElements)} buffers`
     : "Parameter-like storage · trainability unknown";
   elements.moduleCount.textContent = new Intl.NumberFormat().format(stats.modules);
   elements.unitLabel.textContent = "Operations";
   elements.memoryEstimate.textContent = formatBytes(stats.totalBytes);
-  elements.memoryEstimate.title = `${new Intl.NumberFormat().format(stats.totalBytes)} bytes stored by mapped checkpoint tensors`;
-  elements.trainablePercent.textContent = new Intl.NumberFormat().format(checkpointTensors);
-  elements.trainablePercent.title = `${checkpointTensors} exact checkpoint tensors; ${stats.bufferTensors ?? 0} recognized buffers`;
+  elements.memoryEstimate.title = Number.isFinite(stats.totalBytes)
+    ? `${new Intl.NumberFormat().format(stats.totalBytes)} checkpoint bytes reported by ${resolver.label?.toLowerCase() ?? "the resolver"}`
+    : "Checkpoint byte size is unavailable.";
+  elements.trainablePercent.textContent = Number.isFinite(checkpointTensors) ? new Intl.NumberFormat().format(checkpointTensors) : "—";
+  elements.trainablePercent.title = Number.isFinite(checkpointTensors)
+    ? `${checkpointTensors} checkpoint tensor names; ${stats.bufferTensors ?? 0} recognized buffers`
+    : "Tensor names are unavailable in the configuration scaffold.";
   elements.modelEvidence.hidden = false;
-  elements.modelEvidence.classList.toggle("is-scaffold", topology.status === "scaffold");
-  elements.validationStatus.textContent = validation.status === "verified" ? "Graph internally validated" : "Graph not validated";
+  elements.modelEvidence.classList.toggle("is-scaffold", resolver.tier !== "checkpoint-mapped" || topology.status === "scaffold");
+  elements.validationStatus.textContent = resolver.label ?? (validation.status === "verified" ? "Graph internally validated" : "Graph partially validated");
   const topologyLabel = String(topology.residual ?? "topology unresolved").replaceAll("-", " ");
   const positionLabel = String(topology.positionKind ?? "position unresolved").replaceAll("-", " ");
   elements.topologySummary.textContent = `${topologyLabel} · ${positionLabel} · ${topology.confidence ?? "unknown"} confidence`;
   elements.modelEvidence.title = [topology.evidence, validation.limitations].filter(Boolean).join(" — ");
-  elements.svg.setAttribute("aria-label", `${state.model.name} autoregressive transformer graph with ${stats.modules} operations and ${checkpointTensors} checkpoint tensors; ${topologyLabel}`);
+  elements.svg.setAttribute("aria-label", `${state.model.name} autoregressive transformer graph with ${stats.modules} operations and ${Number.isFinite(checkpointTensors) ? checkpointTensors : "unresolved"} checkpoint tensors; ${topologyLabel}`);
 }
 
 function loadGraph(graph) {
@@ -1709,6 +1719,10 @@ function tensorSafetensorsRecord(tensor) {
   return tensor.metadata?.safetensors ?? null;
 }
 
+function tensorCheckpointRecord(tensor) {
+  return tensor.metadata?.checkpoint ?? tensorSafetensorsRecord(tensor);
+}
+
 function scaledTensorDimension(value, minimum, maximum) {
   if (!Number.isFinite(value) || value <= 0) return minimum;
   const normalized = Math.min(1, Math.log2(value + 1) / 16);
@@ -1894,7 +1908,7 @@ function renderTensorDetails(node) {
     const row = document.createElement("article");
     row.className = `tensor-order-row ${tensor.order?.semanticConfidence ?? "path-derived"}`;
     const order = tensor.order ?? {};
-    const safetensors = tensorSafetensorsRecord(tensor);
+    const checkpointRecord = tensorCheckpointRecord(tensor);
 
     const rail = document.createElement("div");
     rail.className = "tensor-order-rail";
@@ -1902,12 +1916,12 @@ function renderTensorDetails(node) {
     orderNumber.textContent = String(index + 1).padStart(2, "0");
     rail.append(orderNumber);
 
-    const preview = makeTensorPreview(tensor);
+    const preview = tensor.shapeKnown === false ? null : makeTensorPreview(tensor);
     const visual = preview ?? document.createElement("div");
     if (!preview) {
       visual.className = "tensor-linear-preview";
-      visual.textContent = `${Array.isArray(tensor.shape) ? tensor.shape.length : 0}D`;
-      visual.setAttribute("aria-label", `${Array.isArray(tensor.shape) ? tensor.shape.length : 0} dimensional tensor`);
+      visual.textContent = tensor.shapeKnown === false ? "?D" : `${Array.isArray(tensor.shape) ? tensor.shape.length : 0}D`;
+      visual.setAttribute("aria-label", tensor.shapeKnown === false ? "Tensor shape unavailable" : `${Array.isArray(tensor.shape) ? tensor.shape.length : 0} dimensional tensor`);
     }
 
     const content = document.createElement("div");
@@ -1931,10 +1945,10 @@ function renderTensorDetails(node) {
     const facts = document.createElement("div");
     facts.className = "tensor-order-facts";
     [
-      formatShape(tensor.shape),
-      tensor.dtype,
-      `${formatCount(tensor.count)} elements`,
-      formatBytes(tensor.totalBytes)
+      tensor.shapeKnown === false ? "shape unavailable" : formatShape(tensor.shape),
+      tensor.dtype === "unknown" ? "dtype unavailable" : tensor.dtype,
+      tensor.shapeKnown === false ? "element count unavailable" : `${formatCount(tensor.count)} elements`,
+      tensor.shapeKnown === false ? "byte offsets unavailable" : formatBytes(tensor.totalBytes)
     ].forEach((value) => {
       const fact = document.createElement("span");
       fact.textContent = value;
@@ -1961,9 +1975,9 @@ function renderTensorDetails(node) {
       : "—";
     const checkpointDetail = document.createElement("small");
     checkpointDetail.textContent = [
-      Number.isInteger(order.shardIndex) ? `shard ${order.shardIndex + 1}` : safetensors?.file,
+      Number.isInteger(order.shardIndex) ? `shard ${order.shardIndex + 1}` : checkpointRecord?.file,
       Number.isInteger(order.fileTensorIndex) ? `item ${order.fileTensorIndex + 1}` : "",
-      Array.isArray(safetensors?.dataOffsets) ? `@ ${new Intl.NumberFormat().format(safetensors.dataOffsets[0])} B` : ""
+      Array.isArray(checkpointRecord?.dataOffsets) ? `@ ${new Intl.NumberFormat().format(checkpointRecord.dataOffsets[0])} B` : ""
     ].filter(Boolean).join(" · ");
     checkpoint.append(checkpointLabel, checkpointIndex, checkpointDetail);
 
@@ -2082,7 +2096,7 @@ function renderRawDetails(node) {
   appendMetadataBlock(modelSection, "Forward-topology contract", state.model.forwardTopology);
   appendMetadataBlock(modelSection, "Graph validation", state.model.validation);
   appendMetadataBlock(modelSection, "All architecture predictions", state.model.architecturePredictions);
-  appendMetadataBlock(modelSection, "Complete Safetensors checkpoint record", state.model.safetensors);
+  appendMetadataBlock(modelSection, "Checkpoint resolver and metadata record", state.model.checkpoint ?? state.model.safetensors);
   appendMetadataBlock(modelSection, "Complete Hugging Face record", state.model.huggingFace);
 }
 
@@ -4489,13 +4503,16 @@ function beginImportLoading() {
   elements.hfImportButton.querySelector(".button-label").textContent = "Loading…";
 }
 
-async function completeImportLoading(tensorCount, shardCount) {
+async function completeImportLoading(tensorCount, checkpointFileCount, resolver = {}) {
   state.importOutcome = "success";
   elements.hfImport.dataset.outcome = "success";
   elements.cancelImportButton.disabled = true;
   elements.cancelImportButton.textContent = "Inspection complete";
-  elements.graphLoadingTitle.textContent = "Circuit ready";
-  elements.graphLoadingDetail.textContent = `${new Intl.NumberFormat().format(tensorCount)} tensors mapped across ${shardCount} checkpoint ${shardCount === 1 ? "file" : "files"}.`;
+  const exact = resolver.tier === "checkpoint-mapped";
+  elements.graphLoadingTitle.textContent = exact ? "Circuit ready" : "Circuit scaffold ready";
+  elements.graphLoadingDetail.textContent = exact
+    ? `${new Intl.NumberFormat().format(tensorCount)} tensors mapped across ${checkpointFileCount} checkpoint ${checkpointFileCount === 1 ? "file" : "files"}.`
+    : `${resolver.label ?? "Partial repository evidence"}; exact tensor shapes and counts remain explicitly unresolved.`;
   elements.appStatusText.textContent = "Circuit ready";
 }
 
@@ -4571,18 +4588,26 @@ async function importHuggingFaceModel(event) {
     if (!response.ok) throw new Error(payload.error ?? `Import failed (${response.status})`);
     if (!payload.graph) throw new Error("The Python backend did not return a graph");
     loadGraph(payload.graph);
-    const tensorCount = payload.graph.stats.checkpointTensors ?? payload.graph.stats.parameterTensors;
-    const shardCount = payload.graph.safetensors.fileCount;
-    elements.hfImportStatus.textContent = `${tensorCount} tensors · ${shardCount} Safetensors file${shardCount === 1 ? "" : "s"}`;
+    const resolver = payload.graph.resolver ?? {};
+    const tensorCount = payload.graph.stats.checkpointTensors;
+    const checkpointFileCount = Number(resolver.checkpointFileCount) || 0;
+    elements.hfImportStatus.textContent = resolver.tier === "checkpoint-mapped"
+      ? `${tensorCount} tensors · ${checkpointFileCount} Safetensors file${checkpointFileCount === 1 ? "" : "s"}`
+      : resolver.tier === "manifest-mapped"
+        ? `${tensorCount} tensor names · ${checkpointFileCount} PyTorch checkpoint file${checkpointFileCount === 1 ? "" : "s"} · shapes unavailable`
+        : `${resolver.label ?? "Configuration scaffold"} · ${resolver.format ?? "unknown"} weights · exact tensors unavailable`;
     elements.loadedRepository.textContent = payload.graph.source.modelId;
     elements.loadedRevision.textContent = payload.graph.source.revision;
     elements.loadedCommit.textContent = payload.graph.source.sha?.slice(0, 12) ?? "—";
-    elements.loadedTensors.textContent = new Intl.NumberFormat().format(tensorCount);
-    elements.loadedShards.textContent = new Intl.NumberFormat().format(shardCount);
+    elements.loadedTensors.textContent = Number.isFinite(tensorCount) ? new Intl.NumberFormat().format(tensorCount) : "Not mapped";
+    elements.loadedShards.textContent = checkpointFileCount ? new Intl.NumberFormat().format(checkpointFileCount) : "—";
+    elements.checkpointNote.textContent = resolver.tier === "checkpoint-mapped"
+      ? "Every Safetensors header field is retained. Select a node to inspect its exact tensors."
+      : [resolver.label, ...(resolver.limitations ?? [])].filter(Boolean).join(" ");
     elements.loadedRepositoryLink.href = payload.graph.source.url;
     renderPredictions(payload.graph.architecturePredictions);
     elements.importSummary.hidden = false;
-    await completeImportLoading(tensorCount, shardCount);
+    await completeImportLoading(tensorCount, checkpointFileCount, resolver);
     refreshDaytonaRecommendation();
     if (window.matchMedia?.("(max-width: 900px)")?.matches) setSidebarCollapsed(true);
     return true;

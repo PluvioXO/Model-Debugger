@@ -237,7 +237,6 @@ def infer_architecture(
     projection = "Separate Q, K, and V projections" if separate_qkv else "Fused QKV projection" if fused_qkv else "Attention projections"
     findings.append(_finding("Projection layout", projection, "inferred", "high" if separate_qkv or fused_qkv else "low", "layer-0 tensor names"))
 
-    model_type = _configured_string(text_config, config, ("model_type",), "transformer").lower()
     rope_keys = (
         "rope_theta", "rope_scaling", "rotary_dim", "rotary_pct", "rotary_emb_base", "partial_rotary_factor"
     )
@@ -331,11 +330,7 @@ def infer_architecture(
     parallel_attention = text_config.get("parallel_attn", config.get("parallel_attn"))
     new_decoder_architecture = bool(text_config.get("new_decoder_architecture", config.get("new_decoder_architecture", False)))
     do_norm_before = text_config.get("do_layer_norm_before", config.get("do_layer_norm_before"))
-    if model_type in {"gptj", "gpt_j"}:
-        residual_topology = "parallel-shared-norm"
-        norm_order = "pre"
-        topology_confidence, topology_evidence = "high", f"Transformers {model_type} block contract"
-    elif explicit_parallel is True:
+    if explicit_parallel is True:
         residual_topology = "parallel-dual-norm"
         norm_order = "pre"
         topology_confidence, topology_evidence = "high", "config.use_parallel_residual=true"
@@ -349,20 +344,20 @@ def infer_architecture(
         dual_norm = new_decoder_architecture and parallel_norms == 2
         residual_topology = "parallel-dual-norm" if dual_norm else "parallel-shared-norm"
         norm_order = "pre"
-        topology_confidence, topology_evidence = "high", "Falcon parallel-attention configuration"
+        topology_confidence, topology_evidence = "high", "parallel-attention configuration fields"
     elif do_norm_before is False:
         residual_topology = "sequential-post-norm"
         norm_order = "post"
         topology_confidence, topology_evidence = "high", "config.do_layer_norm_before=false"
+    elif do_norm_before is True:
+        residual_topology = "sequential-pre-norm"
+        norm_order = "pre"
+        topology_confidence, topology_evidence = "high", "config.do_layer_norm_before=true"
     else:
         residual_topology = "sequential-pre-norm"
         norm_order = "pre"
-        known_sequential = model_type in {
-            "gpt2", "llama", "mistral", "mixtral", "qwen2", "qwen3", "gemma", "gemma2", "phi", "phi3",
-            "bloom", "mpt", "opt", "t5", "mt5", "bart", "pegasus", "deepseek_v2", "deepseek_v3",
-        }
-        topology_confidence = "high" if do_norm_before is True else "medium" if known_sequential or layer_zero else "low"
-        topology_evidence = "config.do_layer_norm_before=true" if do_norm_before is True else f"{model_type} decoder contract and layer tensor paths" if known_sequential else "canonical decoder scaffold; implementation not resolved"
+        topology_confidence = "low"
+        topology_evidence = "canonical decoder scaffold; residual ordering is not declared by safely inspected metadata"
     topology_value = {
         "parallel-dual-norm": "Parallel attention and MLP residual branches · separate pre-norms",
         "parallel-shared-norm": "Parallel attention and MLP residual branches · shared pre-norm",
@@ -1301,9 +1296,28 @@ def build_model_graph(payload: dict) -> dict:
     remaining = [name for name in names if name not in used]
     if remaining:
         _add_node(nodes, tensors, used, "unmapped_tensors", "Unmapped checkpoint tensors", "state", "Exact weight metadata", "unmapped_tensors", "", "", "Preserved so the graph never silently drops checkpoint tensors.", "", "", output_column, 7, remaining)
-    _add_node(nodes, tensors, used, "checkpoint_metadata", "Safetensors checkpoint", "state", "Complete header metadata", "checkpoint_metadata", "", "", "File-level Safetensors metadata retained from every checkpoint shard.", "", "", output_column, 9, [], payload.get("safetensors"))
+    checkpoint_node_name = {
+        "checkpoint-mapped": "Checkpoint tensor inventory",
+        "manifest-mapped": "Checkpoint manifest",
+        "configuration-scaffold": "Repository capability",
+    }.get(resolver_tier, "Repository capability")
+    checkpoint_node_type = {
+        "checkpoint-mapped": "Complete tensor metadata",
+        "manifest-mapped": "Tensor-name manifest",
+        "configuration-scaffold": "Configuration-only evidence",
+    }.get(resolver_tier, "Partial repository evidence")
+    checkpoint_description = {
+        "checkpoint-mapped": "File-level Safetensors metadata retained from every checkpoint shard.",
+        "manifest-mapped": "Tensor names and shard membership retained from a non-executed checkpoint index; shapes and dtypes remain unresolved.",
+        "configuration-scaffold": "No remote checkpoint was executed. The graph preserves only configuration-supported structure and explicit resolver limitations.",
+    }.get(resolver_tier, "Repository evidence and resolver limitations.")
+    _add_node(
+        nodes, tensors, used, "checkpoint_metadata", checkpoint_node_name, "state", checkpoint_node_type,
+        "checkpoint_metadata", "", "", checkpoint_description, "", "", output_column, 9, [],
+        {"resolver": resolver, "safetensors": payload.get("safetensors")},
+    )
     inference_metadata = {"disclaimer": "Inferred findings are speculative and should be verified against the model implementation.", "findings": architecture.findings}
-    _add_node(nodes, tensors, used, "architecture_inference", "Architecture predictions", "state", "Evidence-based inference", "architecture_inference", "", "", "Checkpoint-derived predictions are explicitly labeled by basis and confidence; they are not treated as ground truth.", "", "", output_column, 11, [], inference_metadata)
+    _add_node(nodes, tensors, used, "architecture_inference", "Architecture predictions", "state", "Evidence-based inference", "architecture_inference", "", "", "Repository-derived predictions are explicitly labeled by basis and confidence; they are not treated as ground truth.", "", "", output_column, 11, [], inference_metadata)
 
     output_input = "final_norm" if final_norm_names else previous
     if final_norm_names:
@@ -1330,7 +1344,13 @@ def build_model_graph(payload: dict) -> dict:
     tensor_ordering = {
         "automatic": True,
         "semanticBasis": "tensor-path aliases with a humanized module-path fallback",
-        "checkpointBasis": "natural shard order followed by Safetensors byte offset",
+        "checkpointBasis": (
+            "natural shard order followed by Safetensors byte offset"
+            if checkpoint_mapped else
+            "checkpoint index declaration order; shapes, dtypes, and byte offsets unavailable"
+            if resolver_tier == "manifest-mapped" else
+            "unavailable in the configuration scaffold"
+        ),
         "recognized": sum(tensor["order"]["semanticConfidence"] == "recognized" for tensor in tensor_records),
         "pathDerived": sum(tensor["order"]["semanticConfidence"] == "path-derived" for tensor in tensor_records),
         "checkpointLocated": sum(isinstance(tensor["order"].get("checkpointIndex"), int) for tensor in tensor_records),
@@ -1348,6 +1368,18 @@ def build_model_graph(payload: dict) -> dict:
         "distribution",
     ]
     validation = _validate_graph(nodes, edges, groups, tensors, layers, architecture, overview_node_ids)
+    if not checkpoint_mapped:
+        validation["status"] = "partial"
+        validation["scope"] = "Internal graph-contract consistency against configuration and safely inspectable repository metadata"
+        validation["limitations"] = " ".join(resolver.get("limitations", [])) or "Exact checkpoint tensor metadata is unavailable."
+    exact_checkpoint_elements = total_parameters if checkpoint_mapped else None
+    exact_checkpoint_tensors = total_tensors if resolver.get("tensorNames") else None
+    reported_weight_bytes = resolver.get("weightBytes")
+    checkpoint_bytes = (
+        total_bytes if checkpoint_mapped
+        else int(reported_weight_bytes) if isinstance(reported_weight_bytes, (int, float))
+        else None
+    )
     graph = {
         "mode": "flow",
         "name": model_id,
@@ -1370,12 +1402,14 @@ def build_model_graph(payload: dict) -> dict:
         "residualLedger": residual_ledger,
         "tensorOrdering": tensor_ordering,
         "validation": validation,
+        "resolver": resolver,
+        "checkpoint": {"resolver": resolver, "safetensors": payload.get("safetensors")},
         "safetensors": payload.get("safetensors"),
         "huggingFace": {"hub": hub, "artifacts": payload.get("artifacts"), "artifactInspection": payload.get("artifactInspection")},
         "groups": groups,
         "nodes": nodes,
         "edges": edges,
-        "stats": {"modules": len(nodes), "parameterTensors": total_tensors, "checkpointTensors": total_tensors, "parameterLikeTensors": total_tensors - len(buffer_records), "bufferTensors": len(buffer_records), "maxDepth": 0, "totalParameters": total_parameters, "checkpointElements": total_parameters, "recognizedBufferElements": sum(tensor["count"] for tensor in buffer_records), "trainableParameters": None, "totalBytes": total_bytes, "dtypes": list(dict.fromkeys(str(tensor.get("dtype", "float32")) for tensor in tensors.values() if isinstance(tensor, dict)))},
+        "stats": {"modules": len(nodes), "parameterTensors": total_tensors if resolver.get("tensorNames") else None, "checkpointTensors": exact_checkpoint_tensors, "parameterLikeTensors": total_tensors - len(buffer_records) if resolver.get("tensorNames") else None, "bufferTensors": len(buffer_records) if resolver.get("tensorNames") else None, "maxDepth": 0, "totalParameters": exact_checkpoint_elements, "checkpointElements": exact_checkpoint_elements, "recognizedBufferElements": sum(tensor["count"] for tensor in buffer_records) if checkpoint_mapped else None, "trainableParameters": None, "totalBytes": checkpoint_bytes, "mappedTensorBytes": total_bytes if checkpoint_mapped else None, "dtypes": list(dict.fromkeys(str(tensor.get("dtype", "unknown")) for tensor in tensors.values() if isinstance(tensor, dict) and str(tensor.get("dtype", "unknown")) != "unknown"))},
         "layout": {"nodeWidth": NODE_WIDTH, "nodeHeight": NODE_HEIGHT, "columnStride": COLUMN_STRIDE, "rowStride": ROW_STRIDE, "maxColumn": output_column, "bounds": {"width": output_column * COLUMN_STRIDE + NODE_WIDTH + TENSOR_STACK_MAX_EXTENT, "height": 11 * ROW_STRIDE + NODE_HEIGHT + TENSOR_STACK_MAX_EXTENT}, "overviewNodeIds": overview_node_ids},
     }
     return graph

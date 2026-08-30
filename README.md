@@ -6,7 +6,7 @@ Product purpose, evidence standards, design principles, and the inheritance cont
 
 The circuit diagram and research-paper interface are visually inspired by [Transformer Circuits](https://transformer-circuits.pub/) and its mathematical treatment of residual-stream computation. The interface loads the source site's Styrene A and Tiempos Text webfonts directly from its published CDN, with system fallbacks.
 
-The app reads `config.json` and every Safetensors header without downloading tensor values. The Python backend constructs the transformer’s autoregressive forward function, maps exact checkpoint tensors to operations, preserves unmapped tensors and complete file metadata, and labels evidence-based architecture predictions by source and confidence. The browser receives a ready-to-render graph.
+The app inventories the repository and reads `config.json` plus the strongest checkpoint metadata that is safe to inspect without executing remote content. Safetensors headers produce an exact tensor map; PyTorch index JSON produces a name-and-shard manifest; monolithic PyTorch, GGUF, adapter-only, and configuration-only repositories produce an explicitly limited configuration scaffold. The Python backend never unpickles remote weights merely to draw a graph, and the browser labels the selected resolver tier and every unavailable exact fact.
 
 The graph also exposes a residual-stream ledger. It accounts for the embedding, attention write, MLP write, and accumulated residual state at every decoder block, links each row back to the corresponding graph node, and reserves signed activation-norm and direct-logit-attribution fields for prompt-conditioned traces. Because checkpoint metadata does not contain activations, those run-dependent values are explicitly shown as unmeasured instead of being estimated or fabricated.
 
@@ -20,7 +20,7 @@ Circuit discovery is an architecture-neutral, residual-write adaptation inspired
 
 The application has a public product landing view and a separate research workspace. Launching the workspace opens the checkpoint importer, account session, graph canvas, inspector, residual ledger, and optional Daytona or local execution controls without navigating away from the single-page app.
 
-Tensor ordering is automatic for every inspected repository. Semantic operation order is inferred from checkpoint tensor paths with architecture-neutral aliases and a stable humanized path fallback for unknown modules. Physical order is independently derived from naturally sorted shard names and each tensor's Safetensors byte offset. The UI labels fallback classifications as path-derived, so unfamiliar model implementations remain ordered without pretending their semantic role is known with high confidence.
+Tensor ordering is automatic whenever tensor names are safely available. Semantic operation order is inferred from checkpoint tensor paths with architecture-neutral aliases and a stable humanized path fallback for unknown modules. Physical order uses Safetensors byte offsets for exact maps or checkpoint-index declaration order for manifest maps; configuration scaffolds state that tensor ordering is unavailable. The UI labels fallbacks and unresolved fields instead of manufacturing provenance.
 
 ## Run
 
@@ -95,7 +95,7 @@ The Python backend serves the frontend and exposes:
 - `POST /api/runtime/verify`
 - `POST /api/runtime/activation`
 
-Hugging Face files are inspected with HTTP byte-range requests. The endpoint returns one authoritative `graph` record, avoiding a duplicate legacy payload. It retains each tensor’s raw header entry, dtype, shape, byte offsets, byte size, element count, rank, and shard, plus shard-level `__metadata__`, header and file sizes, ETag, last-modified time, content type, tensor counts, and byte totals. Safetensors does not encode `requires_grad`, so the UI reports exact checkpoint elements and distinguishes recognized buffers from parameter-like storage instead of claiming a trainable-parameter count. The record is fully assembled in Python, including architecture inference, tensor assignment, residual and cache topology, layout coordinates, fallback edge paths, search records, circuit classes, and per-node inspector data. Generation fails closed if its internal validator finds a missing or duplicate tensor, non-conserved element/byte totals, an invalid edge, incomplete layer coverage, or a position/residual topology that contradicts the selected graph contract.
+Hugging Face files are inspected with bounded metadata requests and Safetensors byte ranges when that format is present. The endpoint returns one authoritative `graph` record with a resolver tier: checkpoint mapped, manifest mapped, or configuration scaffold. Exact maps retain raw headers, dtypes, shapes, offsets, sizes, ranks, shard order, and file metadata. Manifest maps retain tensor names and shard membership while leaving shapes, dtypes, offsets, element counts, and parameter totals unavailable. Configuration scaffolds retain only supported configuration and repository facts. Safetensors does not encode `requires_grad`, so even exact maps distinguish recognized buffers from parameter-like storage instead of claiming a trainable-parameter count. Internal validation checks only facts available at the selected tier and never upgrades a scaffold into an exact checkpoint map.
 
 Only browser-native work remains in JavaScript: DOM/SVG creation, obstacle-aware graph routing, viewport virtualization, pan/zoom, keyboard and pointer interaction, accessibility state, forms, loading transitions, token handling, and locale-aware display formatting.
 
@@ -104,7 +104,7 @@ Only browser-native work remains in JavaScript: DOM/SVG creation, obstacle-aware
 - `refusalscope/__main__.py` — `python -m refusalscope` launcher.
 - `refusalscope/server.py` — threaded loopback HTTP server, routing, validation, static serving, auth, sessions, and public response cache.
 - `refusalscope/debug_store.py` — thread-safe SQLite persistence for reproducible debugging cases.
-- `refusalscope/huggingface.py` — Hub record merging, artifact policy, Safetensors range parsing, tensor inventory, and account sanitization.
+- `refusalscope/huggingface.py` — Hub inventory, checkpoint-format resolution, safe artifact policy, Safetensors range parsing, PyTorch manifest mapping, and account sanitization.
 - `refusalscope/graph.py` — decoder discovery, architecture evidence, tensor mapping, graph topology, statistics, layout, fallback edge geometry, search records, circuit classes, and inspector projections.
 - `refusalscope/http_client.py` — authenticated standard-library HTTPS transport and response capture.
 - `refusalscope/config.py` — inspection and request limits.

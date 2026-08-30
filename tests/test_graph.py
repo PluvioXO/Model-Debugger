@@ -107,6 +107,48 @@ class GraphTests(unittest.TestCase):
         self.assertTrue(all(not group["evidence"]["checkpointMapped"] for group in graph["groups"]))
         self.assertEqual(len(nodes["unmapped_tensors"]["tensors"]), 2)
 
+    def test_pytorch_manifest_names_do_not_fabricate_shapes_or_parameter_counts(self) -> None:
+        graph = build_model_graph({
+            "modelId": "org/pytorch-sharded",
+            "revision": "main",
+            "sha": "manifest123",
+            "config": {"model_type": "custom_lm", "num_hidden_layers": 1, "hidden_size": 8, "vocab_size": 32},
+            "tensors": {
+                "model.layers.0.self_attn.q_proj.weight": {
+                    "shape": None,
+                    "dtype": "unknown",
+                    "checkpoint": {
+                        "format": "pytorch-manifest",
+                        "file": "pytorch_model-00001-of-00002.bin",
+                        "checkpointIndex": 0,
+                    },
+                },
+            },
+            "files": ["pytorch_model-00001-of-00002.bin", "pytorch_model-00002-of-00002.bin"],
+            "resolver": {
+                "tier": "manifest-mapped",
+                "label": "Manifest mapped",
+                "format": "pytorch",
+                "checkpointFileCount": 2,
+                "tensorNames": True,
+                "tensorShapes": False,
+                "weightBytes": 1234,
+                "limitations": ["Shapes unavailable."],
+            },
+            "safetensors": None,
+            "hub": {"siblings": []},
+            "artifacts": {},
+            "artifactInspection": {},
+        })
+        record = next(tensor for node in graph["nodes"] for tensor in node["tensors"])
+        self.assertFalse(record["shapeKnown"])
+        self.assertEqual(record["count"], 0)
+        self.assertEqual(record["order"]["checkpointIndex"], 0)
+        self.assertEqual(graph["stats"]["checkpointTensors"], 1)
+        self.assertIsNone(graph["stats"]["checkpointElements"])
+        self.assertEqual(graph["stats"]["totalBytes"], 1234)
+        self.assertEqual(graph["validation"]["status"], "partial")
+
     def test_gpt2_absolute_positions_and_causal_mask_are_mapped_correctly(self) -> None:
         graph = build_model_graph({
             "modelId": "openai-community/gpt2",
@@ -147,10 +189,10 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(graph["stats"]["recognizedBufferElements"], 256)
         self.assertEqual(graph["stats"]["checkpointElements"], sum(self.count(node) for node in graph["nodes"]))
 
-    def test_gptj_parallel_shared_norm_uses_one_branch_input(self) -> None:
+    def test_configured_parallel_shared_norm_uses_one_branch_input(self) -> None:
         graph = build_model_graph(self.single_layer_payload(
-            model_type="gptj",
-            config={"n_head": 2, "rotary_dim": 4},
+            model_type="custom_parallel",
+            config={"n_head": 2, "rotary_dim": 4, "parallel_attn": True, "num_ln_in_parallel_attn": 1},
             prefix="transformer.h",
             tensors={
                 "ln_1.weight": [8],

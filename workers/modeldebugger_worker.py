@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-WORKER_VERSION = "0.3.1"
+WORKER_VERSION = "0.4.0"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_PROMPT_TOKENS = 2048
 MAX_STORED_RUNS = 8
@@ -46,6 +46,51 @@ class RunRecord:
     tensors: dict[str, Any]
     logits: Any
     created_at: float
+
+
+class InferenceWaterfall:
+    """Record contiguous worker phases against one monotonic clock."""
+
+    def __init__(self, clock: Any = time.perf_counter):
+        self._clock = clock
+        self._origin = float(clock())
+        self._cursor = self._origin
+        self._phases: list[dict[str, Any]] = []
+
+    def finish(self, key: str, label: str, category: str, detail: str) -> None:
+        ended = float(self._clock())
+        start_ms = max(0.0, (self._cursor - self._origin) * 1000)
+        duration_ms = max(0.0, (ended - self._cursor) * 1000)
+        self._phases.append({
+            "key": key,
+            "label": label,
+            "category": category,
+            "detail": detail,
+            "startMs": start_ms,
+            "durationMs": duration_ms,
+            "endMs": start_ms + duration_ms,
+        })
+        self._cursor = ended
+
+    def snapshot(self) -> dict[str, Any]:
+        total_ms = max(0.0, (self._cursor - self._origin) * 1000)
+        return {
+            "clock": "time.perf_counter",
+            "scope": "worker",
+            "totalMs": total_ms,
+            "phases": [
+                {
+                    **phase,
+                    "share": phase["durationMs"] / total_ms if total_ms > 0 else 0.0,
+                }
+                for phase in self._phases
+            ],
+            "note": (
+                "Worker-side wall time measured with a monotonic clock. Accelerator work is synchronized at phase "
+                "boundaries. The model-forward phase includes capture-hook overhead and is not raw serving latency; "
+                "browser transport and JSON serialization are outside this timeline."
+            ),
+        }
 
 
 @dataclass
@@ -187,6 +232,15 @@ def _model_input_device(model: Any) -> Any:
         if parameter.device.type != "meta":
             return parameter.device
     return torch.device("cpu")
+
+
+def _synchronize_accelerator(torch: Any, device: Any) -> None:
+    """Finish queued accelerator work so phase wall times are not under-reported."""
+    device_type = str(getattr(device, "type", device)).split(":", 1)[0].lower()
+    backend = getattr(torch, device_type, None)
+    synchronize = getattr(backend, "synchronize", None)
+    if callable(synchronize):
+        synchronize()
 
 
 def _available_accelerator(torch: Any) -> tuple[str, str]:
@@ -1351,9 +1405,18 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
     else:
         target_id = int(torch.argmax(logits).item())
         target_source = "top-prediction"
+    if target_id < 0 or target_id >= logits.numel():
+        raise ValueError(
+            f"The selected tokenizer ID {target_id} is outside the model output vocabulary of {logits.numel()} tokens"
+        )
     target_token = tokenizer.convert_ids_to_tokens([target_id])[0]
-    output_embedding = model.get_output_embeddings()
-    unembedding = output_embedding.weight[target_id] if output_embedding is not None else None
+    output_projection, _output_projection_path = _output_projection(model)
+    output_weight = getattr(output_projection, "weight", None)
+    unembedding = (
+        output_weight[target_id]
+        if torch.is_tensor(output_weight) and output_weight.ndim == 2 and target_id < output_weight.shape[0]
+        else None
+    )
 
     probabilities = torch.softmax(logits, dim=-1)
     top_probabilities, top_ids = torch.topk(probabilities, k=min(top_k, probabilities.numel()))
@@ -1373,7 +1436,8 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
     target_rank = int(torch.count_nonzero(logits > logits[target_id]).item()) + 1
     logit_margin = float(top_predictions[0]["logit"] - top_predictions[1]["logit"]) if len(top_predictions) > 1 else None
 
-    hidden_states = list(outputs.hidden_states or [])
+    hidden_states = list(getattr(outputs, "hidden_states", None) or [])
+    output_attentions = getattr(outputs, "attentions", None)
     verified_normalization = _verified_final_normalization(
         normalization_calls,
         hidden_states[-1] if hidden_states else None,
@@ -1417,7 +1481,7 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
         layer_result["attentionHeadOutputs"] = None
         if attention_head_capture:
             name, tensor = attention_head_capture
-            attention_tensor = outputs.attentions[layer] if outputs.attentions and layer < len(outputs.attentions) else None
+            attention_tensor = output_attentions[layer] if output_attentions and layer < len(output_attentions) else None
             head_count = int(attention_tensor.shape[1]) if torch.is_tensor(attention_tensor) and attention_tensor.ndim == 4 else 0
             if head_count and tensor.shape[-1] % head_count == 0:
                 reshaped = tensor.reshape(*tensor.shape[:-1], head_count, tensor.shape[-1] // head_count)
@@ -1441,9 +1505,9 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
             }
         layers.append(layer_result)
 
-    attention = _attention_summaries(outputs.attentions, tokens, latest)
+    attention = _attention_summaries(output_attentions, tokens, latest)
     attribution = _attribution_summary(layers, target_logit)
-    cache = _cache_summary(outputs.past_key_values)
+    cache = _cache_summary(getattr(outputs, "past_key_values", None))
     continuation = None
     if metric_specification["kind"] in {"sequence_loss", "multi_token_score"}:
         continuation_handles = []
@@ -1642,17 +1706,18 @@ def _generation_trace(state: WorkerState, payload: dict[str, Any]) -> dict[str, 
         logits = output.logits[0, -1].detach().float()
         token_id = _sample_next_token(logits, settings)
         summary = _prediction_summary(logits, tokenizer, token_id, display_top_k)
+        output_hidden_states = getattr(output, "hidden_states", None)
         lens = (
             _logit_lens_timeline(
                 model,
                 tokenizer,
-                output.hidden_states,
+                output_hidden_states,
                 logits,
                 token_id,
                 lens_settings,
                 _verified_final_normalization(
                     normalization_calls,
-                    output.hidden_states[-1] if output.hidden_states else None,
+                    output_hidden_states[-1] if output_hidden_states else None,
                 ),
             )
             if lens_settings["enabled"]

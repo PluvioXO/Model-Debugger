@@ -358,7 +358,8 @@ def _artifact_priority(path: str) -> tuple[int, str]:
         "pytorch_model.bin.index.json",
         "readme.md",
     }
-    return (0 if name in preferred else 1 if "/" not in path else 2, path)
+    checkpoint_index = name.endswith((".safetensors.index.json", ".bin.index.json"))
+    return (0 if name in preferred or checkpoint_index else 1 if "/" not in path else 2, path)
 
 
 def inspect_artifacts(

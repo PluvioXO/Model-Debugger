@@ -47,7 +47,7 @@
         <header class="landing-section-heading"><p class="eyebrow">One workspace, two levels of evidence</p><h2>From checkpoint structure<br />to observed computation.</h2><p>Explore the architecture instantly, then connect an ephemeral GPU only when the research question needs activation data.</p></header>
         <div class="capability-grid">
           <article><span class="feature-index">01</span><h3>Circuit atlas</h3><p>Reconstruct transformer blocks, residual paths, attention, MLPs, and output heads from checkpoint metadata.</p><small>NO MODEL DOWNLOAD</small></article>
-          <article><span class="feature-index">02</span><h3>Tensor provenance</h3><p>See every Safetensors entry in forward-pass order, including shard position, shape, dtype, and semantic role.</p><small>AUTOMATIC FOR ANY HF ID</small></article>
+          <article><span class="feature-index">02</span><h3>Tensor provenance</h3><p>Map exact Safetensors metadata or safely degrade through checkpoint manifests and configuration scaffolds without executing remote weights.</p><small>CAPABILITY-LABELLED FOR EVERY ID</small></article>
           <article><span class="feature-index">03</span><h3>Hooked forward pass</h3><p>Run a prompt on a managed Daytona GPU and inspect residual norms, component writes, attention summaries, logits, and cache shape.</p><small>OBSERVATIONAL EVIDENCE</small></article>
           <article><span class="feature-index">04</span><h3>Activation slices</h3><p>Keep large tensors beside the model and pull only the position or feature slice you need into the interface.</p><small>LAZY TRANSFER</small></article>
         </div>
@@ -104,7 +104,7 @@
               <ul><li>A public Hugging Face model ID—or a read token for a private or gated model.</li><li>A local worker or Daytona GPU only when you need real activations and interventions.</li><li>One selected prompt, one meaningful reference prompt, and a metric that represents the behaviour.</li></ul>
             </div>
             <ol class="tutorial-steps">
-              <li><span>1</span><div><h3>Open the checkpoint</h3><p>Launch the workspace and choose <strong>Open GPT-2 example</strong>, or enter a repository ID and revision. ModelDebugger reads configuration and Safetensors headers to reconstruct the graph without downloading weight values.</p></div></li>
+              <li><span>1</span><div><h3>Open the checkpoint</h3><p>Launch the workspace and choose <strong>Open GPT-2 example</strong>, or enter a repository ID and revision. ModelDebugger inventories the repository, reads safe headers or manifests when available, and falls back to a visibly partial configuration scaffold.</p></div></li>
               <li><span>2</span><div><h3>Orient yourself in the graph</h3><p>Use search, zoom, and fit-to-view. Click a node for its role, connections, exact tensors, shard order, shapes, dtype, and raw metadata.</p></div></li>
               <li><span>3</span><div><h3>Attach execution</h3><p>Open <strong>Settings → Execution worker</strong>. Add your Daytona API key to start a managed GPU, or run the local worker in another terminal. Connect, then choose <strong>Load current model</strong>.</p><pre><code>make -C '/Users/maximiliannicholson/Documents/untitled folder 5' worker</code></pre></div></li>
               <li><span>4</span><div><h3>Define the experiment</h3><p>Open <strong>Run model</strong>. Set the selected prompt, reference prompt, expected behaviour, target token, seed, and metric. A logit difference or target probability is often clearer than an unqualified “looks better.”</p></div></li>
@@ -224,7 +224,7 @@
 
         <p class="editor-help">
           Enter a Hugging Face causal language model. ModelDebugger reconstructs its forward pass
-          as a mathematical circuit and maps every Safetensors entry onto the computation.
+          as a mathematical circuit and uses the strongest checkpoint metadata it can inspect safely.
         </p>
 
         <section id="hfAccount" class="hf-account" data-state="disconnected" aria-labelledby="hfAccountTitle">
@@ -259,7 +259,7 @@
           <input id="hfModelInput" class="source-input" placeholder="e.g. openai-community/gpt2" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="hfImportHint hfImportStatus" required />
           <div class="field-label-row"><label for="hfRevisionInput">Revision</label><span>Branch, tag, or commit</span></div>
           <input id="hfRevisionInput" class="source-input" value="main" placeholder="main, branch, tag, or commit" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="hfImportHint" />
-          <p id="hfImportHint" class="input-hint">Only checkpoint headers and metadata are read; weight values are not downloaded. Connect a Hugging Face account in Settings for private or gated repositories.</p>
+          <p id="hfImportHint" class="input-hint">Only safe checkpoint headers, manifests, and configuration metadata are read; remote pickle weights and custom code are not executed. Connect a Hugging Face account in Settings for private or gated repositories.</p>
           <button id="hfImportButton" class="primary-button" type="submit">
             <span class="button-label">Inspect checkpoint</span>
             <span class="button-visual" aria-hidden="true">
@@ -294,7 +294,7 @@
             <dt>Checkpoint tensors</dt><dd id="loadedTensors">—</dd>
             <dt>Shards</dt><dd id="loadedShards">—</dd>
           </dl>
-          <div class="checkpoint-note">Every Safetensors header field is retained. Select a node to inspect its exact tensors.</div>
+          <div id="checkpointNote" class="checkpoint-note">Resolver capability and checkpoint evidence appear here after inspection.</div>
           <details class="prediction-section">
             <summary class="prediction-heading">
               <span>Architecture predictions</span>
