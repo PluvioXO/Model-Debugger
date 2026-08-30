@@ -4,6 +4,7 @@ import test from "node:test";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const application = readFileSync(new URL("./app.js", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 test("every queried element ID exists exactly once", () => {
   const queried = [...application.matchAll(/document\.querySelector\("#([A-Za-z][A-Za-z0-9_-]*)"\)/g)]
@@ -47,6 +48,15 @@ test("workspace exposes the integrated trace, sweep, history, watchlist, and len
   assert.match(application, /function applyRuntimeCapabilityVisibility/);
   assert.match(html, /data-runtime-capability="logitLens"/);
   assert.match(html, /data-runtime-capability="rootCauseTrace"/);
+});
+
+test("model interface keeps scrolling vertical and makes analysis grids shrinkable", () => {
+  assert.match(styles, /\.model-interface\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/);
+  assert.match(styles, /\.model-interface-scroll\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*0;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/);
+  assert.match(styles, /\.model-interface-scroll\s*>\s*\*\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/);
+  assert.match(styles, /\.model-analysis\s*>\s*\*\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/);
+  assert.match(styles, /\.model-run-summary\s*\{[^}]*grid-template-columns:\s*repeat\(3,minmax\(0,1fr\)\);/);
+  assert.match(styles, /\.inference-waterfall-axis,\.inference-waterfall-row\s*\{[^}]*grid-template-columns:\s*minmax\(64px,\.9fr\)\s+minmax\(74px,1\.7fr\)\s+minmax\(45px,\.55fr\);/);
 });
 
 test("landing page includes the complete advanced field guide", () => {
