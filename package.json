@@ -1,0 +1,12 @@
+{
+  "name": "model-debugger",
+  "version": "0.4.0",
+  "projectStartedAt": "2026-08-30T10:31:05+01:00",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "make run",
+    "build": "make build",
+    "test": "make test"
+  }
+}

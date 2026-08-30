@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model-debugger"
+version = "0.4.0"
+description = "A local mechanistic-interpretability interface for Hugging Face language models"
+requires-python = ">=3.11"
+dependencies = ["daytona==0.207.0"]
+
+[tool.setuptools.packages.find]
+include = ["refusalscope*", "workers*"]
+
+[tool.model-debugger]
+project-started-at = "2026-08-30T10:31:05+01:00"

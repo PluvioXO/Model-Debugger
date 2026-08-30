@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Explore Hugging Face transformer circuits, checkpoint tensor order, residual streams, and prompt-conditioned activations in one mechanistic interpretability workspace."
+    />
+    <title>ModelDebugger — Transformer Circuit Atlas</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-view="landing">
+    <div id="landing" class="landing-page">
+      <nav class="landing-nav" aria-label="Primary navigation">
+        <a class="landing-brand" href="#home" aria-label="ModelDebugger home"><span class="brand-mark landing-brand-icon" aria-hidden="true"><span></span><span></span><span></span></span><span>ModelDebugger</span></a>
+        <div class="landing-nav-links"><a href="#capabilities">Capabilities</a><a href="#workflow">Workflow</a><a href="#research">Research</a><a href="#tutorial">Tutorial</a></div>
+        <button class="landing-nav-cta" data-open-workspace type="button">Launch workspace <span aria-hidden="true">↗</span></button>
+      </nav>
+
+      <section id="home" class="landing-hero" aria-labelledby="landingTitle">
+        <div class="landing-grid" aria-hidden="true"></div>
+        <div class="landing-copy">
+          <p class="eyebrow">Mechanistic interpretability workspace</p>
+          <h1 id="landingTitle">See the computation<br /><em>inside</em> a transformer.</h1>
+          <p class="landing-lede">Turn any Hugging Face causal language model into an explorable circuit. Trace residual streams, inspect tensor order, and attach a GPU worker for real activations.</p>
+          <div class="landing-actions">
+            <button id="landingStartButton" class="landing-start" data-open-workspace type="button">Open a model <span aria-hidden="true">→</span></button>
+            <a href="#tutorial">Read the field guide <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="landing-proof"><span><strong>Any HF model ID</strong>automatic graph reconstruction</span><span><strong>Managed GPU</strong>private Daytona execution</span><span><strong>Evidence first</strong>observations clearly labeled</span></div>
+        </div>
+        <div class="landing-product" aria-label="Illustration of a transformer residual circuit">
+          <div class="landing-product-bar"><span><i></i><i></i><i></i></span><small>Qwen3 · residual stream</small><b>LIVE</b></div>
+          <div class="landing-circuit" aria-hidden="true">
+            <div class="circuit-rail"></div>
+            <div class="circuit-node node-input"><span>INPUT</span><strong>Token embedding</strong><small>x₀ ∈ ℝᵈ</small></div>
+            <div class="circuit-group"><label>TRANSFORMER BLOCK 08</label><div class="circuit-node node-attn"><span>ATTENTION</span><strong>Head composition</strong><small>Σ softmax(QKᵀ)V</small></div><div class="circuit-node node-mlp"><span>MLP</span><strong>Feature synthesis</strong><small>W₂ σ(W₁h)</small></div></div>
+            <div class="circuit-node node-output"><span>RESIDUAL</span><strong>h₉</strong><small>+0.84 DLA</small></div>
+            <div class="circuit-arrow arrow-a">→</div><div class="circuit-arrow arrow-b">→</div><div class="circuit-arrow arrow-c">→</div>
+          </div>
+          <div class="landing-product-foot"><span>Activation norm <strong>18.42</strong></span><span>Selected token <strong>“refuse”</strong></span><span>Tensor order <strong>247 / 311</strong></span></div>
+        </div>
+      </section>
+
+      <section id="capabilities" class="landing-section capabilities-section">
+        <header class="landing-section-heading"><p class="eyebrow">One workspace, two levels of evidence</p><h2>From checkpoint structure<br />to observed computation.</h2><p>Explore the architecture instantly, then connect an ephemeral GPU only when the research question needs activation data.</p></header>
+        <div class="capability-grid">
+          <article><span class="feature-index">01</span><h3>Circuit atlas</h3><p>Reconstruct transformer blocks, residual paths, attention, MLPs, and output heads from checkpoint metadata.</p><small>NO MODEL DOWNLOAD</small></article>
+          <article><span class="feature-index">02</span><h3>Tensor provenance</h3><p>See every Safetensors entry in forward-pass order, including shard position, shape, dtype, and semantic role.</p><small>AUTOMATIC FOR ANY HF ID</small></article>
+          <article><span class="feature-index">03</span><h3>Hooked forward pass</h3><p>Run a prompt on a managed Daytona GPU and inspect residual norms, component writes, attention summaries, logits, and cache shape.</p><small>OBSERVATIONAL EVIDENCE</small></article>
+          <article><span class="feature-index">04</span><h3>Activation slices</h3><p>Keep large tensors beside the model and pull only the position or feature slice you need into the interface.</p><small>LAZY TRANSFER</small></article>
+        </div>
+      </section>
+
+      <section id="workflow" class="landing-section workflow-section">
+        <div class="workflow-copy"><p class="eyebrow">Designed for the research loop</p><h2>Inspect. Hook. Compare.</h2><p>Start with a map of the computation, then move into measurement without losing your place in the model.</p><button class="landing-start compact" data-open-workspace type="button">Start exploring <span aria-hidden="true">→</span></button></div>
+        <ol class="workflow-list"><li><span>1</span><div><strong>Open the checkpoint</strong><p>Paste a model ID. ModelDebugger derives its architecture and tensor order.</p></div></li><li><span>2</span><div><strong>Attach compute</strong><p>Add your Daytona API key and let ModelDebugger provision a private, temporary GPU sandbox.</p></div></li><li><span>3</span><div><strong>Run one hooked pass</strong><p>Choose a prompt and target token, then inspect measurements at each layer.</p></div></li></ol>
+      </section>
+
+      <section id="research" class="landing-section research-section"><p class="eyebrow">Built for interpretation, not decoration</p><blockquote>“The graph is a map. The forward pass is evidence. ModelDebugger keeps the distinction visible.”</blockquote><div class="research-tags"><span>Residual stream ledger</span><span>Direct logit attribution</span><span>Attention entropy</span><span>KV cache inspection</span><span>Tensor ordering</span></div></section>
+
+    <section id="tutorial" class="landing-tutorial" aria-labelledby="tutorialTitle">
+      <header class="tutorial-hero">
+        <div class="tutorial-hero-copy">
+          <p class="tutorial-kicker">ModelDebugger field guide · 01</p>
+          <h1 id="tutorialTitle" tabindex="-1">From checkpoint map<br />to <em>causal evidence.</em></h1>
+          <p>Learn the interface in ten minutes, then use the advanced recipes to compare prompts, test interventions, discover candidate circuits, inspect activations, analyse benchmarks, and verify a fix.</p>
+          <div class="tutorial-hero-actions"><button data-open-workspace type="button">Start in the workspace <span aria-hidden="true">→</span></button><a href="#tutorial-start">Begin the guide <span aria-hidden="true">↓</span></a></div>
+        </div>
+        <aside class="tutorial-loop" aria-label="Model debugging research loop">
+          <p>Research loop</p>
+          <ol>
+            <li><span>01</span><strong>Define</strong><small>Prompt, control, metric</small></li>
+            <li><span>02</span><strong>Observe</strong><small>Hooks, logits, residuals</small></li>
+            <li><span>03</span><strong>Compare</strong><small>Find internal divergence</small></li>
+            <li><span>04</span><strong>Intervene</strong><small>Patch or ablate</small></li>
+            <li><span>05</span><strong>Verify</strong><small>Test guardrails, export</small></li>
+          </ol>
+          <p class="tutorial-loop-note">A graph suggests where to look. Only a controlled intervention supports a causal claim.</p>
+        </aside>
+      </header>
+
+      <div class="tutorial-layout">
+        <aside class="tutorial-toc" aria-label="On this page">
+          <p>On this page</p>
+          <a href="#tutorial-start"><span>01</span>First ten minutes</a>
+          <a href="#tutorial-evidence"><span>02</span>Evidence &amp; graph anatomy</a>
+          <a href="#tutorial-advanced"><span>03</span>Advanced workflows</a>
+          <a href="#tutorialCompare"><span>04</span>Compare prompts</a>
+          <a href="#tutorialIntervene"><span>05</span>Run interventions</a>
+          <a href="#tutorialTrace"><span>06</span>Trace root cause</a>
+          <a href="#tutorialMicroscope"><span>07</span>Inspect activations</a>
+          <a href="#tutorialBenchmark"><span>08</span>Analyse a benchmark</a>
+          <a href="#tutorialVerify"><span>09</span>Verify &amp; export</a>
+          <a href="#tutorialDiagnostics"><span>10</span>Diagnostics</a>
+        </aside>
+
+        <main class="tutorial-content">
+          <section id="tutorial-start" class="tutorial-chapter tutorial-first-run" aria-labelledby="tutorialStartTitle">
+            <header class="tutorial-chapter-heading"><span>01</span><div><p>Quick start</p><h2 id="tutorialStartTitle">Your first useful run</h2><p>Use the development fixture to learn the controls, or enter any Hugging Face causal language model ID. Graph inspection needs only checkpoint metadata; prompt-conditioned analysis needs an execution worker.</p></div></header>
+            <div class="tutorial-prerequisites">
+              <strong>Bring</strong>
+              <ul><li>A public Hugging Face model ID—or a read token for a private or gated model.</li><li>A local worker or Daytona GPU only when you need real activations and interventions.</li><li>One selected prompt, one meaningful reference prompt, and a metric that represents the behaviour.</li></ul>
+            </div>
+            <ol class="tutorial-steps">
+              <li><span>1</span><div><h3>Open the checkpoint</h3><p>Launch the workspace and choose <strong>Open GPT-2 example</strong>, or enter a repository ID and revision. ModelDebugger reads configuration and Safetensors headers to reconstruct the graph without downloading weight values.</p></div></li>
+              <li><span>2</span><div><h3>Orient yourself in the graph</h3><p>Use search, zoom, and fit-to-view. Click a node for its role, connections, exact tensors, shard order, shapes, dtype, and raw metadata.</p></div></li>
+              <li><span>3</span><div><h3>Attach execution</h3><p>Open <strong>Settings → Execution worker</strong>. Add your Daytona API key to start a managed GPU, or run the local worker in another terminal. Connect, then choose <strong>Load current model</strong>.</p><pre><code>make -C '/Users/maximiliannicholson/Documents/untitled folder 5' worker</code></pre></div></li>
+              <li><span>4</span><div><h3>Define the experiment</h3><p>Open <strong>Run model</strong>. Set the selected prompt, reference prompt, expected behaviour, target token, seed, and metric. A logit difference or target probability is often clearer than an unqualified “looks better.”</p></div></li>
+              <li><span>5</span><div><h3>Run and save</h3><p>Choose <strong>Run selected example</strong>. Read predictions, tokenisation, attribution, residual traces, attention entropy, hook inventory, and diagnostics. Save the setup as a debug case before changing it.</p></div></li>
+            </ol>
+            <div class="tutorial-metrics" aria-label="Metric chooser">
+              <header><p class="tutorial-label">Metric chooser</p><h3>Measure the behaviour you actually mean.</h3></header>
+              <div><strong>Target probability</strong><p>Track one next-token answer.</p></div><div><strong>Logit difference</strong><p>Contrast correct and incorrect tokens.</p></div><div><strong>Sequence loss</strong><p>Score a multi-token continuation.</p></div><div><strong>KL divergence</strong><p>Measure change across the full output distribution.</p></div><div><strong>Multi-token score</strong><p>Combine acceptable answer tokens or phrases.</p></div><div><strong>Custom token groups</strong><p>Compare domain-specific positive and negative sets.</p></div>
+            </div>
+            <div class="tutorial-ready-grid" aria-label="Workspace readiness states"><div><span>STRUCTURE READY</span><strong>Graph visible</strong><p>Architecture and tensor provenance are available.</p></div><div><span>RUNTIME READY</span><strong>Worker connected</strong><p>The matching checkpoint is loaded for forward passes.</p></div><div><span>EXPERIMENT READY</span><strong>Metric defined</strong><p>Selected and reference prompts test one hypothesis.</p></div></div>
+          </section>
+
+          <section id="tutorial-evidence" class="tutorial-chapter" aria-labelledby="tutorialEvidenceTitle">
+            <header class="tutorial-chapter-heading"><span>02</span><div><p>Interpretation rules</p><h2 id="tutorialEvidenceTitle">Know what kind of evidence you have</h2><p>ModelDebugger separates the map, the measurements, and the manipulations. Treating them as interchangeable is the fastest route to an overclaim.</p></div></header>
+            <div class="tutorial-evidence-grid">
+              <article><span>MAP</span><h3>Structural</h3><p>Configuration, tensor names, shapes, shard order, graph paths, and inferred module roles.</p><strong>Answers: what exists?</strong><small>Useful for navigation, not behavioural causality.</small></article>
+              <article><span>MEASUREMENT</span><h3>Observational</h3><p>Predictions, residual norms, DLA, attention entropy, token alignment, and divergence maps from a hooked run.</p><strong>Answers: what co-varies?</strong><small>Suggests candidates; it does not prove necessity.</small></article>
+              <article><span>MANIPULATION</span><h3>Causal</h3><p>Ablations, activation patches, resampling, scaling, steering, and intervention-backed pruning.</p><strong>Answers: what changes the result?</strong><small>Valid only for the tested prompts, metric, component, and intervention.</small></article>
+            </div>
+            <div class="tutorial-anatomy">
+              <div><p class="tutorial-label">Graph anatomy</p><h3>Read left to right, then inspect depth.</h3><p>Nodes represent computations or parameterised modules. Arrows show data flow; the residual rail carries the accumulating hidden state through the model. Transformer blocks group repeated attention and MLP operations.</p></div>
+              <dl><div><dt>Stacked cards</dt><dd>The offset cards behind a node encode tensor rank—the number of dimensions—not duplicate modules. The stack now stays inside its owning container.</dd></div><div><dt>Tensor order</dt><dd>The inspector records forward-pass-relevant parameter order and original shard position. It is provenance, not an execution timestamp.</dd></div><div><dt>Measured badges</dt><dd>Values appear only after a compatible hooked run. A dash means “not measured,” never zero.</dd></div><div><dt>Predictions</dt><dd>Inferred architecture labels are explicitly marked. Check the model implementation before treating them as ground truth.</dd></div></dl>
+            </div>
+          </section>
+
+          <section id="tutorial-advanced" class="tutorial-chapter tutorial-advanced-index" aria-labelledby="tutorialAdvancedTitle">
+            <header class="tutorial-chapter-heading"><span>03</span><div><p>Advanced functionality</p><h2 id="tutorialAdvancedTitle">Choose the next experiment by question</h2><p>Each tool occupies a different point in the research loop. Start with the narrowest workflow that can falsify your hypothesis.</p></div></header>
+            <div class="tutorial-workflow-map">
+              <a href="#tutorialCompare"><span>OBSERVE</span><strong>Where do two prompts diverge?</strong><small>Paired comparison →</small></a>
+              <a href="#tutorialIntervene"><span>TEST</span><strong>Does this component matter?</strong><small>Intervention lab →</small></a>
+              <a href="#tutorialTrace"><span>DISCOVER</span><strong>Which small circuit is sufficient?</strong><small>Root-cause trace →</small></a>
+              <a href="#tutorialMicroscope"><span>INSPECT</span><strong>What is inside this activation?</strong><small>Component microscope →</small></a>
+              <a href="#tutorialBenchmark"><span>SCALE</span><strong>Where does the behaviour recur?</strong><small>Benchmark explorer →</small></a>
+              <a href="#tutorialVerify"><span>VALIDATE</span><strong>Did the change generalise safely?</strong><small>Verification →</small></a>
+            </div>
+          </section>
+
+          <article id="tutorialCompare" class="tutorial-recipe" aria-labelledby="tutorialCompareTitle">
+            <header><span>04 · OBSERVATIONAL</span><h2 id="tutorialCompareTitle">Compare selected and reference prompts</h2><p>Use this when one prompt produces the behaviour and a closely matched control does not.</p></header>
+            <div class="tutorial-recipe-grid"><div><h3>Before you begin</h3><p>Load the model into a worker. Keep the prompts as similar as the hypothesis allows, define the target or token groups, and select the metric before running.</p></div><ol><li>Enter the selected prompt and reference prompt in <strong>Run model</strong>.</li><li>Run the selected example, then choose <strong>Compare with reference</strong>.</li><li>Check token alignment first; mismatched tokenisation can move apparent divergence.</li><li>Read the metric delta and ranked internal divergence map together.</li><li>Carry a short candidate list into an intervention—do not stop at correlation.</li></ol></div>
+            <aside><strong>How to read it</strong><p>Large KL or activation divergence identifies where runs differ, not why the output changed. Direct logit attribution is signed observational evidence: positive supports the target in that run; negative opposes it.</p></aside>
+          </article>
+
+          <article id="tutorialIntervene" class="tutorial-recipe" aria-labelledby="tutorialInterveneTitle">
+            <header><span>05 · CAUSAL</span><h2 id="tutorialInterveneTitle">Test a component with an intervention</h2><p>Use this to test whether a candidate component is necessary, sufficient, or directionally influential for the defined metric.</p></header>
+            <div class="tutorial-methods"><span><b>Zero</b>Remove the activation.</span><span><b>Mean</b>Replace it with a baseline mean.</span><span><b>Resample</b>Insert a control activation.</span><span><b>Patch</b>Copy the matched reference activation.</span><span><b>Scale</b>Change its magnitude.</span><span><b>Steer</b>Add a selected direction.</span></div>
+            <div class="tutorial-recipe-grid"><div><h3>Choose deliberately</h3><p>Patch, resample, and steering need comparison context. Select one component, choose the selected token or all positions, and record the scale. Position-scoped tests are usually easier to interpret.</p></div><ol><li>Run or compare the case so captured components are available.</li><li>Select the candidate and intervention method.</li><li>Set scope and scale, then choose <strong>Run intervention</strong>.</li><li>Compare the intervened metric to the clean selected run.</li><li>Repeat with controls, nearby components, and seeds before claiming specificity.</li></ol></div>
+            <aside class="causal-note"><strong>Claim boundary</strong><p>A signed effect is causal for this exact manipulation and context. It does not automatically establish the component’s natural mechanism, uniqueness, or general importance.</p></aside>
+          </article>
+
+          <article id="tutorialTrace" class="tutorial-recipe" aria-labelledby="tutorialTraceTitle">
+            <header><span>06 · CAUSAL DISCOVERY</span><h2 id="tutorialTraceTitle">Trace a candidate root-cause circuit</h2><p>Use this after paired comparison when you need a smaller intervention-backed subgraph rather than a long ranked list.</p></header>
+            <div class="tutorial-recipe-grid"><div><h3>EAP → ACDC</h3><p>Edge attribution patching quickly ranks candidate computation edges. ACDC then uses actual activation interventions to prune edges whose removal stays below your metric threshold.</p></div><ol><li>Create a clean selected/reference comparison with a meaningful metric.</li><li>Choose the candidate count; begin small enough to audit.</li><li>Set the ACDC threshold in metric units.</li><li>Choose <strong>Discover candidate circuit</strong>.</li><li>Inspect retained edges, fidelity, and stability; rerun across examples and thresholds.</li></ol></div>
+            <aside><strong>How to read it</strong><p>Fidelity asks whether the reduced circuit preserves the measured effect. Stability asks whether the result survives perturbations. Neither replaces external replication or guardrail verification.</p></aside>
+          </article>
+
+          <article id="tutorialMicroscope" class="tutorial-recipe" aria-labelledby="tutorialMicroscopeTitle">
+            <header><span>07 · BOUNDED INSPECTION</span><h2 id="tutorialMicroscopeTitle">Inspect one activation slice</h2><p>Use the microscope when summary charts hide the token, head, or feature-level pattern you need.</p></header>
+            <div class="tutorial-recipe-grid"><div><h3>Keep tensors near compute</h3><p>The worker retains full activations. The UI requests only a bounded slice of 64, 256, or 512 values, avoiding a large browser transfer.</p></div><ol><li>Run the case and select a captured hook.</li><li>Set token position; <code>-1</code> means the final prompt token.</li><li>For attention tensors, set the head index.</li><li>Choose the smallest useful value limit and inspect the activation.</li><li>Compare top values, features, tokens, or differences with the control run.</li></ol></div>
+            <aside><strong>Scope check</strong><p>A slice is not the full tensor distribution. Record the hook path, position, head, limit, dtype, and model revision so the view can be reproduced.</p></aside>
+          </article>
+
+          <article id="tutorialBenchmark" class="tutorial-recipe" aria-labelledby="tutorialBenchmarkTitle">
+            <header><span>08 · EVALUATION</span><h2 id="tutorialBenchmarkTitle">Turn a benchmark into debug cases</h2><p>Use this to find recurring failures, regressions, anomalies, and internal signatures across examples.</p></header>
+            <div class="tutorial-recipe-grid"><div><h3>Accepted sources</h3><p>Import JSONL, CSV, JSON, or a Hugging Face dataset. Include prompt, reference prompt, expected behaviour, target, metric, and outcome columns when available.</p></div><ol><li>Name the benchmark and import a file or dataset ID.</li><li>Filter passed, failed, regressed, anomalous, observed, or pending rows.</li><li>Load the matching model and choose <strong>Run benchmark</strong>.</li><li>Review outcome groups and clusters by output signature and internal circuit.</li><li>Open a representative row and save it as a debug case for deeper analysis.</li></ol></div>
+            <aside><strong>Current limit</strong><p>A benchmark run processes at most the first 100 imported examples sequentially. Treat clusters as triage aids; inspect individual examples before inferring a shared mechanism.</p></aside>
+          </article>
+
+          <article id="tutorialVerify" class="tutorial-recipe" aria-labelledby="tutorialVerifyTitle">
+            <header><span>09 · VALIDATION</span><h2 id="tutorialVerifyTitle">Verify the intervention and export the record</h2><p>Use this after an intervention appears to fix the selected case.</p></header>
+            <div class="tutorial-recipe-grid"><div><h3>Guard against a local win</h3><p>Verification reapplies the latest intervention to the selected example plus line-separated guardrail prompts, then labels outcomes as fixed, unchanged, or regressed.</p></div><ol><li>Keep the latest successful intervention selected.</li><li>Add prompts whose behaviour must not regress, one per line.</li><li>Choose <strong>Verify intervention</strong>.</li><li>Review selected-case improvement and every guardrail outcome.</li><li>Export the Markdown debug report with the case, metric, evidence, intervention, and results.</li></ol></div>
+            <aside class="causal-note"><strong>Research hygiene</strong><p>Pin the model commit, chat template, prompt text, tokenisation, seed, dtype, device, metric, target, component path, scope, and intervention scale. A report is useful only if another run can recreate it.</p></aside>
+          </article>
+
+          <article id="tutorialDiagnostics" class="tutorial-recipe tutorial-diagnostics" aria-labelledby="tutorialDiagnosticsTitle">
+            <header><span>10 · TROUBLESHOOTING</span><h2 id="tutorialDiagnosticsTitle">Read diagnostics before reading mechanisms</h2><p>Numerical or runtime failures can imitate interpretability findings.</p></header>
+            <div class="tutorial-diagnostic-grid"><div><strong>No worker</strong><p>The graph still works. Start and connect local or Daytona execution for hooks.</p></div><div><strong>Model mismatch</strong><p>Load the currently inspected checkpoint into the worker before running.</p></div><div><strong>Missing metric target</strong><p>Target probability, logit difference, and token-group metrics require their matching fields.</p></div><div><strong>NaN / Inf</strong><p>Stop interpreting the run. Check precision, intervention scale, input length, and model compatibility.</p></div><div><strong>Hook gaps</strong><p>Unsupported module naming may limit capture. Use the inventory to confirm what was actually measured.</p></div><div><strong>Latency or memory</strong><p>Reduce model size, sequence length, capture scope, benchmark size, or activation slice limit.</p></div></div>
+          </article>
+
+          <section class="tutorial-checklist" aria-labelledby="tutorialChecklistTitle"><p>Before you publish a finding</p><h2 id="tutorialChecklistTitle">Evidence discipline, every time.</h2><ul><li>Pin model revision and resolved commit.</li><li>Save exact prompts, tokenisation, metric, target, and expected behaviour.</li><li>Use a matched reference and negative-control components.</li><li>Label graph facts, observations, and interventions separately.</li><li>Reserve causal language for controlled manipulations.</li><li>Test multiple examples, seeds, thresholds, and guardrails.</li><li>Export a report while the run context is still intact.</li></ul><button data-open-workspace type="button">Open the workspace <span aria-hidden="true">→</span></button></section>
+        </main>
+      </div>
+
+    </section>
+
+      <section class="landing-final"><p class="eyebrow">Ready when your model is</p><h2>Open the circuit.</h2><button class="landing-start" data-open-workspace type="button">Launch ModelDebugger <span aria-hidden="true">→</span></button></section>
+      <footer class="landing-footer"><a class="landing-brand" href="#home"><span class="brand-mark landing-brand-icon" aria-hidden="true"><span></span><span></span><span></span></span><span>ModelDebugger</span></a><p>Transformer Circuit Atlas · local-first research software</p><span>© 2026</span></footer>
+    </div>
+
+    <header class="topbar">
+      <button id="appHomeButton" class="brand app-brand-button" type="button" aria-label="Return to ModelDebugger home">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+          <div>
+            <div class="brand-name">ModelDebugger</div>
+            <div class="brand-product">Transformer Circuit Atlas</div>
+        </div>
+      </button>
+      <div class="topbar-meta">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="appStatusText">Checkpoint circuit viewer</span>
+        <button id="tutorialButton" class="tutorial-button" type="button">Guide</button>
+        <button id="settingsButton" class="settings-button" type="button" aria-haspopup="dialog" aria-controls="settingsDrawer" aria-expanded="false"><span id="settingsButtonIcon" aria-hidden="true">⚙</span><img id="settingsButtonAvatar" alt="" hidden referrerpolicy="no-referrer" /> Settings</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside id="editorPanel" class="editor-panel" aria-label="Hugging Face checkpoint importer">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Causal LM checkpoint</p>
+            <h1>Open a model circuit</h1>
+          </div>
+          <button id="collapseSidebarButton" class="panel-collapse-button" type="button" aria-label="Hide checkpoint setup" title="Hide checkpoint setup">×</button>
+        </div>
+
+        <p class="editor-help">
+          Enter a Hugging Face causal language model. ModelDebugger reconstructs its forward pass
+          as a mathematical circuit and maps every Safetensors entry onto the computation.
+        </p>
+
+        <section id="hfAccount" class="hf-account" data-state="disconnected" aria-labelledby="hfAccountTitle">
+          <div class="hf-account-summary">
+            <span id="hfAccountMark" class="hf-account-mark" aria-hidden="true">
+              <span id="hfAccountAvatarFallback">HF</span>
+              <img id="hfAccountAvatar" alt="" hidden referrerpolicy="no-referrer" />
+            </span>
+            <div class="hf-account-identity">
+              <strong id="hfAccountTitle">Hugging Face account</strong>
+              <span id="hfAccountDetail">Public models only</span>
+            </div>
+            <button id="hfAccountToggleButton" class="hf-account-toggle" type="button" aria-controls="hfAccountForm" aria-expanded="false">Connect</button>
+          </div>
+          <form id="hfAccountForm" class="hf-account-form" hidden novalidate>
+            <div class="field-label-row"><label for="hfTokenInput">Read access token</label><span>Private models</span></div>
+            <div class="hf-token-row">
+              <input id="hfTokenInput" class="source-input" type="password" placeholder="hf_…" autocomplete="new-password" autocapitalize="none" spellcheck="false" aria-describedby="hfAccountHint hfAccountStatus" required />
+              <button id="hfAccountConnectButton" type="submit">Connect</button>
+            </div>
+            <p id="hfAccountHint" class="hf-account-hint">Use a read or fine-grained token. The key stays in the local server’s memory; a protected, HttpOnly session cookie restores it after refresh without exposing it to page scripts. <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer">Create a token ↗</a></p>
+          </form>
+          <p id="hfAccountStatus" class="hf-account-status" role="status" aria-live="polite"></p>
+          <div id="hfAccountProfile" class="hf-account-profile" hidden>
+            <div id="hfAccountOrgs" class="hf-account-orgs" aria-label="Hugging Face organizations"></div>
+            <a id="hfAccountProfileLink" target="_blank" rel="noreferrer">View Hugging Face profile ↗</a>
+          </div>
+        </section>
+
+        <form id="hfImport" class="hf-import" novalidate>
+          <div class="field-label-row"><label for="hfModelInput">Repository ID</label><span>Required</span></div>
+          <input id="hfModelInput" class="source-input" placeholder="e.g. openai-community/gpt2" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="hfImportHint hfImportStatus" required />
+          <div class="field-label-row"><label for="hfRevisionInput">Revision</label><span>Branch, tag, or commit</span></div>
+          <input id="hfRevisionInput" class="source-input" value="main" placeholder="main, branch, tag, or commit" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="hfImportHint" />
+          <p id="hfImportHint" class="input-hint">Only checkpoint headers and metadata are read; weight values are not downloaded. Connect a Hugging Face account in Settings for private or gated repositories.</p>
+          <button id="hfImportButton" class="primary-button" type="submit">
+            <span class="button-label">Inspect checkpoint</span>
+            <span class="button-visual" aria-hidden="true">
+              <span class="button-arrow">→</span>
+              <span class="button-spinner"></span>
+            </span>
+          </button>
+          <p id="hfImportStatus" role="status" aria-live="polite">No checkpoint loaded.</p>
+          <div class="development-example">
+            <div><strong>Development fixture</strong><span>Real GPT-2 graph · illustrative benchmark states</span></div>
+            <button id="gpt2DevExampleButton" type="button">Open GPT-2 example</button>
+          </div>
+        </form>
+
+        <section class="debug-case-library" aria-labelledby="debugCaseLibraryTitle">
+          <div class="debug-case-library-heading"><div><p class="eyebrow">Research workspace</p><h2 id="debugCaseLibraryTitle">Debug cases</h2></div><button id="newDebugCaseButton" type="button">New</button></div>
+          <label class="sr-only" for="debugCaseSelect">Saved debug case</label>
+          <select id="debugCaseSelect"><option value="">No saved cases</option></select>
+          <div class="debug-case-library-actions"><button id="openDebugCaseButton" type="button" disabled>Open case</button><button id="deleteDebugCaseButton" type="button" disabled>Delete</button></div>
+          <p id="debugCaseLibraryStatus" role="status" aria-live="polite">Cases are stored locally in SQLite.</p>
+        </section>
+
+        <section id="importSummary" class="import-summary" hidden>
+          <div class="import-summary-heading">
+            <p class="eyebrow">Loaded checkpoint</p>
+            <a id="loadedRepositoryLink" href="#" target="_blank" rel="noreferrer">Open on Hub ↗</a>
+          </div>
+          <dl>
+            <dt>Repository</dt><dd id="loadedRepository">—</dd>
+            <dt>Revision</dt><dd id="loadedRevision">—</dd>
+            <dt>Commit</dt><dd id="loadedCommit">—</dd>
+            <dt>Checkpoint tensors</dt><dd id="loadedTensors">—</dd>
+            <dt>Shards</dt><dd id="loadedShards">—</dd>
+          </dl>
+          <div class="checkpoint-note">Every Safetensors header field is retained. Select a node to inspect its exact tensors.</div>
+          <details class="prediction-section">
+            <summary class="prediction-heading">
+              <span>Architecture predictions</span>
+              <span id="predictionCount">Inferences are labeled</span>
+            </summary>
+            <div id="predictionList" class="prediction-list"></div>
+            <p class="prediction-disclaimer">Predictions use configuration fields, tensor names, and shapes. Verify inferred findings against the model implementation before relying on them.</p>
+          </details>
+        </section>
+
+        <section id="runtimePanel" class="runtime-panel" data-state="disconnected" aria-labelledby="runtimeTitle">
+          <div class="runtime-heading">
+            <div><p class="eyebrow">Optional execution</p><h2 id="runtimeTitle">Execution worker</h2></div>
+            <span id="runtimeBadge" class="runtime-badge">Offline</span>
+          </div>
+          <p class="runtime-intro">Provision a private Daytona GPU on your account or run hooked forward passes locally. Model weights and full activations stay with the worker.</p>
+          <div id="runtimeConnectFields" class="runtime-connect-fields">
+            <div class="runtime-mode" role="group" aria-label="Execution location"><button id="runtimeModeDaytona" type="button" aria-pressed="true">Daytona GPU</button><button id="runtimeModeLocal" type="button" aria-pressed="false">Local machine</button></div>
+            <div id="runtimeDaytonaSetup" class="runtime-setup runtime-daytona-setup">
+              <p>ModelDebugger provisions a private spot GPU billed to your Daytona account and deletes it when you disconnect. Spot interruption is possible, so saved debug cases remain local.</p>
+              <div class="runtime-gpu-recommendation"><span>Recommended instance</span><strong id="runtimeGpuRecommendation">RTX-4090 · 24 GiB</strong><small id="runtimeGpuReason">Load a checkpoint to calculate a model-aware recommendation.</small></div>
+              <label for="runtimeGpuSelect">GPU instance</label>
+              <select id="runtimeGpuSelect" class="source-input"><option value="auto">Automatic · recommended</option><option value="RTX-4090">RTX 4090 · 24 GiB</option><option value="RTX-5090">RTX 5090 · 32 GiB</option><option value="H100">H100 · 80 GiB</option><option value="RTX-PRO-6000">RTX PRO 6000 · 96 GiB</option><option value="H200">H200 · 141 GiB</option></select>
+              <label for="runtimeDaytonaApiKeyInput">Daytona API key <span>required for billing</span></label>
+              <input id="runtimeDaytonaApiKeyInput" class="source-input" type="password" placeholder="Paste your Daytona API key" autocomplete="off" autocapitalize="none" spellcheck="false" />
+              <label for="runtimeDaytonaHfTokenInput">Hugging Face token <span>optional for gated models</span></label>
+              <input id="runtimeDaytonaHfTokenInput" class="source-input" type="password" placeholder="Only sent to the private sandbox when provided" autocomplete="off" autocapitalize="none" spellcheck="false" />
+              <small>Keys stay in the loopback server’s memory, are never saved in the browser or research database, and the sandbox has a two-hour deletion backstop.</small>
+            </div>
+            <div id="runtimeLocalSetup" class="runtime-setup" hidden><p>Start the worker from any directory in a separate terminal:</p><div class="runtime-command"><code>make -C '/Users/maximiliannicholson/Documents/untitled folder 5' worker</code><button id="copyRuntimeCommandButton" type="button">Copy</button></div><small>The first run creates an isolated environment and installs the model dependencies. CUDA and Apple Metal are used automatically when available.</small><label for="runtimeEndpointInput">Worker endpoint</label><input id="runtimeEndpointInput" class="source-input" type="url" value="http://127.0.0.1:8765" placeholder="http://127.0.0.1:8765" autocomplete="off" autocapitalize="none" spellcheck="false" readonly /><label id="runtimeSecretLabel" for="runtimeSecretInput" hidden>Session secret</label><input id="runtimeSecretInput" class="source-input" type="password" autocomplete="off" hidden /></div>
+            <div class="runtime-connect-actions"><button id="runtimeConnectButton" class="runtime-primary" type="button">Start Daytona GPU</button></div>
+          </div>
+          <div id="runtimeControls" class="runtime-controls" hidden>
+            <dl class="runtime-worker-meta"><dt>Accelerator</dt><dd id="runtimeAccelerator">—</dd><dt>Worker model</dt><dd id="runtimeModel">None loaded</dd></dl>
+            <button id="runtimeLoadButton" class="runtime-secondary" type="button" disabled>Load current model</button>
+            <p class="runtime-ready-note">Prompting and activation analysis appear in the main workspace once this model is loaded.</p>
+            <button id="runtimeDisconnectButton" class="runtime-disconnect" type="button">Disconnect worker</button>
+          </div>
+          <p id="runtimeStatus" class="runtime-status" role="status" aria-live="polite">No execution worker connected.</p>
+        </section>
+
+      </aside>
+
+      <section class="graph-panel" aria-label="Generated model graph">
+        <div class="summary-strip">
+          <div class="model-identity">
+            <p class="eyebrow">Transformer circuit</p>
+            <h2 id="modelTitle">No model loaded</h2>
+            <p id="modelType">Enter a Hugging Face repository to begin</p>
+            <p id="modelEvidence" class="model-evidence" role="status" hidden><span id="validationStatus">Awaiting graph</span><span aria-hidden="true">·</span><span id="topologySummary">Topology unresolved</span></p>
+          </div>
+          <div class="summary-stat">
+            <span>Checkpoint elements</span>
+            <strong id="totalParameters">—</strong>
+            <small id="checkpointBreakdown"></small>
+          </div>
+          <div class="summary-stat">
+            <span id="unitLabel">Operations</span>
+            <strong id="moduleCount">—</strong>
+          </div>
+          <div class="summary-stat">
+            <span>Stored bytes</span>
+            <strong id="memoryEstimate">—</strong>
+          </div>
+          <div class="summary-stat accent-stat">
+            <span>Checkpoint tensors</span>
+            <strong id="trainablePercent">—</strong>
+          </div>
+        </div>
+
+        <div class="graph-toolbar">
+          <div class="toolbar-leading">
+            <button id="sidebarToggleButton" class="toolbar-button sidebar-toggle-button" type="button" aria-controls="editorPanel" aria-expanded="true" title="Hide checkpoint setup">
+              <span aria-hidden="true">☰</span><span class="sidebar-toggle-label">Hide setup</span>
+            </button>
+            <div class="search-shell">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <path d="m16 16 4 4"></path>
+              </svg>
+              <input id="searchInput" type="search" placeholder="Find module, tensor, or operation" autocomplete="off" aria-label="Search graph" aria-keyshortcuts="/ Control+K Meta+K" />
+              <span id="searchCount" role="status" aria-live="polite"></span>
+              <kbd aria-hidden="true">/</kbd>
+            </div>
+          </div>
+          <div class="toolbar-group" aria-label="Graph controls">
+            <button id="zoomOutButton" class="icon-button" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+            <button id="zoomReadout" class="zoom-readout" type="button" title="Fit graph to viewport" aria-label="Current zoom; fit graph">100%</button>
+            <button id="zoomInButton" class="icon-button" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+            <button id="runModelButton" class="toolbar-button run-model-button" type="button" aria-controls="modelInterface" aria-expanded="false" title="Prompt the loaded model and inspect hooked activations" disabled><span class="run-model-dot" aria-hidden="true"></span> Run model</button>
+            <button id="watchlistButton" class="toolbar-button watchlist-button" type="button" aria-controls="watchlistPanel" aria-expanded="false" title="Track components and research annotations">Watchlist <span id="watchlistCount">0</span></button>
+            <button id="residualLedgerButton" class="toolbar-button residual-ledger-button" type="button" aria-controls="residualLedger" aria-expanded="false" title="Inspect additive residual-stream writes">Residual ledger</button>
+            <button id="fitButton" class="toolbar-button" type="button" title="Fit graph to viewport">Fit</button>
+            <button id="exportButton" class="toolbar-button export-button" type="button" title="Download the full circuit as SVG">
+              Export SVG
+            </button>
+          </div>
+        </div>
+
+        <div id="graphViewport" class="graph-viewport">
+          <div id="graphLoading" class="graph-loading" hidden>
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <h3 id="graphLoadingTitle" role="status" aria-live="polite">Loading checkpoint…</h3>
+            <p id="graphLoadingDetail">Fetching repository metadata and checkpoint headers.</p>
+            <button id="cancelImportButton" class="loading-cancel-button" type="button">Cancel inspection</button>
+          </div>
+          <div id="emptyState" class="empty-state">
+            <div class="empty-glyph" aria-hidden="true"><span></span><span></span><span></span></div>
+            <p class="eyebrow">Awaiting checkpoint</p>
+            <h3>Open a causal LM as a circuit</h3>
+            <p>Residual updates, attention paths, MLPs, equations, exact tensors, and checkpoint metadata will appear here.</p>
+            <button id="emptyFocusButton" class="empty-action-button" type="button">Enter a repository ID <span aria-hidden="true">↗</span></button>
+          </div>
+          <svg id="graphSvg" role="img" aria-label="Model architecture graph" aria-describedby="canvasHint" tabindex="0">
+            <defs>
+              <filter id="nodeShadow" x="-20%" y="-20%" width="140%" height="160%">
+                <feDropShadow dx="0" dy="6" stdDeviation="7" flood-opacity="0.14" />
+              </filter>
+              <marker id="arrowhead-signal" data-arrowhead viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+                <path data-arrowhead-shape d="M 1 1 L 9.5 5 L 1 9 Z" fill="#9c9a92"></path>
+              </marker>
+              <marker id="arrowhead-attention" data-arrowhead viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+                <path data-arrowhead-shape d="M 1 1 L 9.5 5 L 1 9 Z" fill="#6a9bcc"></path>
+              </marker>
+              <marker id="arrowhead-mlp" data-arrowhead viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+                <path data-arrowhead-shape d="M 1 1 L 9.5 5 L 1 9 Z" fill="#cc785c"></path>
+              </marker>
+              <marker id="arrowhead-residual" data-arrowhead viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+                <path data-arrowhead-shape d="M 1 1 L 9.5 5 L 1 9 Z" fill="#788c5d"></path>
+              </marker>
+              <marker id="arrowhead-residual-rail" data-arrowhead viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+                <path data-arrowhead-shape d="M 0.5 0.5 L 9.5 5 L 0.5 9.5 Z" fill="#63784c"></path>
+              </marker>
+              <marker id="arrowhead-memory" data-arrowhead viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+                <path data-arrowhead-shape d="M 1 1 L 9.5 5 L 1 9 Z" fill="#c46686"></path>
+              </marker>
+            </defs>
+            <g id="camera">
+              <g id="groupLayer" aria-hidden="true"></g>
+              <g id="tensorStackLayer" aria-hidden="true"></g>
+              <g id="edgeLayer" aria-hidden="true"></g>
+              <g id="nodeLayer"></g>
+            </g>
+          </svg>
+
+          <div id="canvasHint" class="canvas-hint">
+            <span>Drag / scroll to pan</span>
+            <span>⌘/Ctrl + scroll to zoom</span>
+            <span>Arrows navigate</span>
+            <span id="detailLevelHint">Semantic zoom</span>
+          </div>
+
+          <div class="legend" aria-label="Edge type legend">
+            <span><i class="legend-attention"></i> Attention</span>
+            <span><i class="legend-mlp"></i> MLP</span>
+            <span><i class="legend-residual"></i> Residual</span>
+            <span><i class="legend-cache"></i> Cache / recurrence</span>
+            <span><i class="legend-signal"></i> Signal</span>
+          </div>
+
+          <aside id="watchlistPanel" class="watchlist-panel" aria-label="Graph watchlist" hidden>
+            <header class="watchlist-panel-header">
+              <div><p class="eyebrow">Persistent research context</p><h3>Graph watchlist</h3></div>
+              <button id="closeWatchlistButton" type="button" aria-label="Close graph watchlist">×</button>
+            </header>
+            <p class="watchlist-panel-note">Track components across runs. Evidence labels are researcher annotations; only measured intervention results should be marked causal.</p>
+            <div id="watchlistList" class="watchlist-list" role="list"></div>
+          </aside>
+
+          <aside id="residualLedger" class="residual-ledger" aria-label="Residual stream ledger" hidden>
+            <header class="residual-ledger-header">
+              <div>
+                <p class="eyebrow">Mechanistic interpretability</p>
+                <h3>Residual stream ledger</h3>
+              </div>
+              <button id="closeResidualLedgerButton" class="residual-ledger-close" type="button" aria-label="Close residual stream ledger" title="Close ledger">×</button>
+            </header>
+            <div class="residual-ledger-context" aria-label="Ledger measurement context">
+              <div><span>Position</span><strong id="residualLedgerPosition">Position t</strong></div>
+              <div><span>Metric</span><strong id="residualLedgerMetric">DLA · not measured</strong></div>
+            </div>
+            <p id="residualLedgerNote" class="residual-ledger-note"></p>
+            <div class="residual-ledger-columns" aria-hidden="true">
+              <span>State and additive writes</span><span>Direct logit attribution</span>
+            </div>
+            <div id="residualLedgerList" class="residual-ledger-list" role="list"></div>
+          </aside>
+
+          <aside id="modelInterface" class="model-interface" aria-label="Model run interface" hidden>
+            <header class="model-interface-header">
+              <div><p class="eyebrow">Prompt-conditioned analysis</p><h3>Model interface</h3><p id="modelInterfaceSubtitle">Run one forward pass and inspect the computation.</p></div>
+              <button id="closeModelInterfaceButton" class="model-interface-close" type="button" aria-label="Close model interface">×</button>
+            </header>
+            <div class="model-interface-scroll">
+              <section class="debug-case-editor" aria-labelledby="debugCaseEditorTitle">
+                <div class="debug-case-editor-heading"><div><p class="eyebrow">Reproducible case</p><h4 id="debugCaseEditorTitle">Benchmark context</h4></div><span id="debugCaseSaveState">Not saved</span></div>
+                <div class="debug-case-fields">
+                  <div><label for="debugCaseNameInput">Case name</label><input id="debugCaseNameInput" type="text" maxlength="180" placeholder="Name this benchmark investigation" /></div>
+                  <div><label for="debugExpectedInput">Expected behaviour</label><input id="debugExpectedInput" type="text" placeholder="What should the model produce?" /></div>
+                </div>
+                <label for="debugNotesInput">Researcher notes</label>
+                <textarea id="debugNotesInput" rows="2" placeholder="Hypothesis, provenance, or reproduction notes"></textarea>
+                <div class="debug-case-actions"><button id="saveDebugCaseButton" type="button">Save case</button><button id="duplicateDebugCaseButton" type="button">Save as copy</button></div>
+              </section>
+              <section id="modelRunConnection" class="model-run-connection" data-state="offline"><span class="run-connection-dot" aria-hidden="true"></span><div><strong id="modelRunConnectionTitle">No execution worker</strong><p id="modelRunConnectionDetail">Connect and load a worker from Settings before running the model.</p></div><button id="modelRunSettingsButton" type="button">Open settings</button></section>
+              <form id="modelRunForm" class="model-run-form">
+                <div class="debug-prompt-grid"><div><label for="runtimePromptInput">Selected example</label><textarea id="runtimePromptInput" rows="5" placeholder="Benchmark input to inspect">The capital of France is</textarea></div><div><label for="runtimeControlPromptInput">Reference example</label><textarea id="runtimeControlPromptInput" rows="5" placeholder="Matched baseline, clean, or control input">France's capital city is</textarea></div></div>
+                <details class="metric-builder" open>
+                  <summary><span>Behaviour metric</span><strong id="debugMetricSummary">Target-token probability</strong></summary>
+                  <div class="metric-builder-grid">
+                    <div><label for="debugMetricNameInput">Metric name</label><input id="debugMetricNameInput" value="Target-token probability" /></div>
+                    <div><label for="debugMetricKindSelect">Metric type</label><select id="debugMetricKindSelect"><option value="target_probability">Target-token probability</option><option value="logit_difference">Correct vs incorrect logit difference</option><option value="sequence_loss">Sequence loss</option><option value="kl_divergence">KL divergence</option><option value="multi_token_score">Multi-token answer score</option><option value="custom_token_groups">Custom token groups</option></select></div>
+                    <div><label for="runtimeTargetInput">Target token</label><input id="runtimeTargetInput" type="text" placeholder="e.g. Paris" /></div>
+                    <div><label for="debugMetricAnswerInput">Answer sequence</label><input id="debugMetricAnswerInput" type="text" placeholder="e.g. Paris" /></div>
+                    <div><label for="debugMetricPositiveInput">Correct / positive tokens</label><input id="debugMetricPositiveInput" type="text" placeholder="Paris, Lyon" /></div>
+                    <div><label for="debugMetricNegativeInput">Incorrect / negative tokens</label><input id="debugMetricNegativeInput" type="text" placeholder="London, Berlin" /></div>
+                  </div>
+                </details>
+                <div class="model-run-options"><div><label for="debugSeedInput">Seed</label><input id="debugSeedInput" type="number" min="0" max="2147483647" value="0" /></div><div><label for="runtimeTopKInput">Predictions</label><select id="runtimeTopKInput"><option value="5">Top 5</option><option value="10" selected>Top 10</option><option value="20">Top 20</option></select></div></div>
+                <div class="debug-run-actions"><button id="runtimeForwardButton" class="model-run-submit" type="submit" disabled><span class="model-run-submit-label">Run selected example</span><span aria-hidden="true">→</span></button><button id="runtimeCompareButton" class="model-run-secondary" type="button" disabled>Compare with reference</button></div>
+                <p id="modelRunStatus" class="model-run-status" role="status" aria-live="polite">Connect an execution worker to begin.</p>
+              </form>
+              <section class="debugger-suite" aria-labelledby="debuggerSuiteTitle">
+                <div class="debugger-suite-heading"><div><p class="eyebrow">Workspace tools</p><h4 id="debuggerSuiteTitle">Trace, sweep, and compare</h4></div><span>Reproducible context</span></div>
+                <details class="debugger-tool" open>
+                  <summary><span><b>Generation timeline</b><small>Autoregressive token decisions + logit lens</small></span><i aria-hidden="true">⌄</i></summary>
+                  <div class="debugger-tool-body">
+                    <div class="debugger-controls generation-controls">
+                      <div><label for="generationMaxTokens">New tokens</label><input id="generationMaxTokens" type="number" min="1" max="32" value="8" /></div>
+                      <div><label for="generationMode">Decoding</label><select id="generationMode"><option value="greedy">Greedy</option><option value="sample">Sampled</option></select></div>
+                      <div><label for="generationTemperature">Temperature</label><input id="generationTemperature" type="number" min="0.01" max="10" step="0.05" value="1" disabled /></div>
+                      <div><label for="generationTopP">Top-p</label><input id="generationTopP" type="number" min="0.01" max="1" step="0.01" value="1" disabled /></div>
+                      <div><label for="generationLensStages">Lens stages</label><input id="generationLensStages" type="number" min="2" max="48" value="16" /></div>
+                    </div>
+                    <button id="runGenerationButton" class="debug-primary-action" type="button" disabled>Trace generation</button>
+                    <div id="generationTimelineResult" class="generation-timeline-result" hidden></div>
+                  </div>
+                </details>
+                <details class="debugger-tool">
+                  <summary><span><b>Run history and diff</b><small>Compatible observational comparisons</small></span><i aria-hidden="true">⌄</i></summary>
+                  <div class="debugger-tool-body">
+                    <div class="run-history-heading"><p>Snapshots stay with this debug case. Worker-bound interventions remain available only while the worker retains their source run.</p><span id="runHistoryCount">0 runs</span></div>
+                    <div id="runHistoryList" class="run-history-list" role="list"></div>
+                    <div class="run-diff-controls"><label for="runDiffLeft">Earlier run</label><select id="runDiffLeft"></select><label for="runDiffRight">Later run</label><select id="runDiffRight"></select><button id="compareRunsButton" type="button" disabled>Compare snapshots</button></div>
+                    <div id="runDiffResult" class="run-diff-result" hidden></div>
+                  </div>
+                </details>
+                <details class="debugger-tool">
+                  <summary><span><b>Causal sweep matrix</b><small>One intervention per layer × token cell</small></span><i aria-hidden="true">⌄</i></summary>
+                  <div class="debugger-tool-body">
+                    <div class="debugger-controls sweep-controls">
+                      <div><label for="sweepComponentKind">Component</label><select id="sweepComponentKind"><option value="residual">Residual output</option><option value="attention">Attention write</option><option value="mlp">MLP write</option></select></div>
+                      <div><label for="sweepMethod">Intervention</label><select id="sweepMethod"><option value="zero">Zero ablation</option><option value="mean">Run-position mean</option><option value="patch">Reference patch</option><option value="scale">Scale</option></select></div>
+                      <div><label for="sweepPositionCount">Recent positions</label><input id="sweepPositionCount" type="number" min="1" max="16" value="4" /></div>
+                      <div><label for="sweepScale">Scale</label><input id="sweepScale" type="number" min="-100" max="100" step="0.1" value="0" disabled /></div>
+                    </div>
+                    <p class="debugger-science-note">Each cell changes one activation at one token position while holding the prompt and metric fixed. The grid is exploratory and requires held-out confirmation.</p>
+                    <button id="runCausalSweepButton" class="debug-primary-action" type="button" disabled>Run causal sweep</button>
+                    <div id="causalSweepResult" class="causal-sweep-result" hidden></div>
+                  </div>
+                </details>
+              </section>
+              <div id="runtimeResult" class="model-analysis" hidden>
+                <section id="modelRunSummary" class="model-run-summary" aria-label="Run summary"></section>
+                <section class="model-analysis-section"><div class="model-analysis-heading"><div><p class="eyebrow">Sequence</p><h4>Prompt tokens</h4></div><span id="modelTokenContext"></span></div><div id="modelTokenStrip" class="model-token-strip"></div></section>
+                <section class="model-analysis-section"><div class="model-analysis-heading"><div><p class="eyebrow">Output distribution</p><h4>Next-token predictions</h4></div><span id="modelPredictionEntropy"></span></div><div id="modelPredictionList" class="model-prediction-list"></div></section>
+                <section class="model-analysis-section logit-lens-section"><div class="model-analysis-heading"><div><p class="eyebrow">Observational decode</p><h4>Logit-lens timeline</h4></div><span id="logitLensMethod">Not measured</span></div><div id="logitLensChart" class="model-chart logit-lens-chart"></div><div id="logitLensStages" class="logit-lens-stages"></div><p id="logitLensNote" class="model-attribution-note"></p></section>
+                <section class="model-analysis-section attribution-section"><div class="model-analysis-heading"><div><p class="eyebrow">Output attribution</p><h4>Which components support the target?</h4></div><span id="modelAttributionMethod">Direct logit attribution</span></div><div id="modelAttributionSummary" class="model-attribution-summary"></div><div id="modelContributionChart" class="model-contribution-chart"></div><div class="model-chart-grid attribution-layer-chart"><figure class="chart-wide"><figcaption>Signed contribution by layer</figcaption><div id="componentDlaChart" class="model-chart"></div></figure></div><p id="modelAttributionNote" class="model-attribution-note"></p></section>
+                <section class="model-analysis-section metric-distribution-section"><div class="model-analysis-heading"><div><p class="eyebrow">Distribution diagnostics</p><h4>Metric histograms</h4></div><span id="metricDistributionScope">Current run</span></div><div class="model-chart-grid metric-histogram-grid"><figure><figcaption>Compatible behaviour-metric runs</figcaption><div id="metricHistoryHistogram" class="model-chart model-histogram"></div></figure><figure><figcaption>Component target-token DLA</figcaption><div id="componentDlaHistogram" class="model-chart model-histogram"></div></figure><figure class="chart-wide"><figcaption>Residual-state norms across depth</figcaption><div id="residualNormHistogram" class="model-chart model-histogram"></div></figure></div><p class="model-attribution-note">Bars show counts, not ranked importance. Components and layers within one forward pass are dependent measurements; the plots describe this run and are not uncertainty estimates or independent replicates.</p></section>
+                <section class="model-analysis-section"><div class="model-analysis-heading"><div><p class="eyebrow">Residual stream</p><h4>Layer traces</h4></div><span>Last prompt position</span></div><div class="model-chart-grid"><figure><figcaption>Activation norm</figcaption><div id="residualNormChart" class="model-chart"></div></figure><figure><figcaption>Target-token DLA</figcaption><div id="residualDlaChart" class="model-chart"></div></figure><figure><figcaption>Residual update norm</figcaption><div id="residualDeltaChart" class="model-chart"></div></figure><figure><figcaption>Cosine similarity to final state</figcaption><div id="residualCosineChart" class="model-chart"></div></figure><figure class="chart-wide"><figcaption>Attention and MLP write norms</figcaption><div id="componentNormChart" class="model-chart"></div></figure></div></section>
+                <section class="model-analysis-section"><div class="model-analysis-heading"><div><p class="eyebrow">Attention</p><h4>Head entropy map</h4></div><span>Sharper heads are darker</span></div><div id="attentionEntropyMap" class="attention-entropy-map"></div></section>
+                <section class="model-analysis-section"><div class="model-analysis-heading"><div><p class="eyebrow">Capture inventory</p><h4>Hooks and cache</h4></div><span id="modelHookCount"></span></div><div id="modelHookTable" class="model-hook-table"></div></section>
+                <section class="model-analysis-section diagnostics-section"><div class="model-analysis-heading"><div><p class="eyebrow">Model health</p><h4>Numerical and runtime diagnostics</h4></div><span id="debugDiagnosticCount">No issues</span></div><div id="debugDiagnostics" class="debug-diagnostics"></div></section>
+              </div>
+              <section id="debugComparisonResult" class="debug-tool-section" hidden><div class="model-analysis-heading"><div><p class="eyebrow">Comparative evidence</p><h4>Selected vs reference</h4></div><span id="debugComparisonMetric"></span></div><div id="debugComparisonSummary" class="debug-summary-grid"></div><div class="debug-tool-subsection"><h5>Token alignment</h5><div id="debugTokenAlignment" class="debug-token-alignment"></div></div><div class="debug-tool-subsection"><h5>Internal divergence map</h5><div id="debugDivergenceChart" class="model-chart"></div><figure class="metric-histogram-card"><figcaption>Component divergence-score distribution</figcaption><div id="debugDivergenceHistogram" class="model-chart model-histogram"></div></figure><div id="debugDivergenceList" class="debug-ranked-list"></div></div></section>
+              <section class="debug-tool-section" aria-labelledby="interventionLabTitle"><div class="model-analysis-heading"><div><p class="eyebrow">Causal experiment</p><h4 id="interventionLabTitle">Intervention lab</h4></div><span>Selected run context</span></div><div class="debug-tool-controls"><div><label for="debugInterventionComponent">Component</label><select id="debugInterventionComponent"><option value="">Run or compare a case first</option></select></div><div><label for="debugInterventionMethod">Method</label><select id="debugInterventionMethod"><option value="zero">Zero ablation</option><option value="mean">Mean ablation</option><option value="resample">Resample from control</option><option value="patch">Control activation patch</option><option value="scale">Activation scaling</option><option value="steer">Directional steering</option></select></div><div><label for="debugInterventionScale">Scale</label><input id="debugInterventionScale" type="number" step="0.1" value="1" /></div><div><label for="debugInterventionScope">Scope</label><select id="debugInterventionScope"><option value="position">Selected token</option><option value="all">All token positions</option></select></div></div><button id="debugRunInterventionButton" class="debug-primary-action" type="button" disabled>Run intervention</button><div id="debugInterventionResult" class="debug-intervention-result" hidden></div></section>
+              <section class="debug-tool-section" aria-labelledby="rootCauseTitle"><div class="model-analysis-heading"><div><p class="eyebrow">Automated diagnosis</p><h4 id="rootCauseTitle">Root-cause trace</h4></div><span>EAP → ACDC</span></div><p>Rank candidate computation edges with attribution patching, then validate the reduced graph with real activation interventions.</p><div class="debug-tool-controls"><div><label for="debugTraceCandidates">Candidates</label><input id="debugTraceCandidates" type="number" min="4" max="64" value="16" /></div><div><label for="debugTraceThreshold">ACDC threshold</label><input id="debugTraceThreshold" type="number" min="0" step="0.001" value="0.01" /></div></div><button id="debugRunTraceButton" class="debug-primary-action" type="button" disabled>Discover candidate circuit</button><div id="debugTraceResult" class="debug-trace-result" hidden></div></section>
+              <section class="debug-tool-section" aria-labelledby="microscopeTitle"><div class="model-analysis-heading"><div><p class="eyebrow">Bounded activation access</p><h4 id="microscopeTitle">Component microscope</h4></div><span>Block → head → token → feature</span></div><div class="debug-tool-controls"><div><label for="debugMicroscopeHook">Captured component</label><select id="debugMicroscopeHook"><option value="">Run a case first</option></select></div><div><label for="debugMicroscopePosition">Token position</label><input id="debugMicroscopePosition" type="number" value="-1" /></div><div><label for="debugMicroscopeHead">Attention head</label><input id="debugMicroscopeHead" type="number" min="0" value="0" /></div><div><label for="debugMicroscopeLimit">Values</label><select id="debugMicroscopeLimit"><option value="64">64</option><option value="256" selected>256</option><option value="512">512</option></select></div></div><button id="debugLoadActivationButton" class="debug-primary-action" type="button" disabled>Inspect activation</button><div id="debugMicroscopeResult" class="debug-microscope-result" hidden></div></section>
+              <section class="debug-tool-section" aria-labelledby="benchmarkExplorerTitle"><div class="model-analysis-heading"><div><p class="eyebrow">Evaluation analysis</p><h4 id="benchmarkExplorerTitle">Benchmark explorer</h4></div><span id="debugInboxCount">0 examples</span></div><p>Import any JSONL, CSV, JSON, or Hugging Face benchmark. Inspect passes, failures, regressions, anomalies, or any selected example and group them by output signature and internal circuit.</p><div class="debug-inbox-import"><input id="debugBenchmarkName" type="text" placeholder="Benchmark name (optional)" /><input id="debugInboxFile" type="file" accept=".jsonl,.json,.csv,text/csv,application/json" /><input id="debugInboxDataset" type="text" placeholder="Hugging Face dataset ID (optional)" /><select id="debugBenchmarkFilter" aria-label="Filter benchmark outcomes"><option value="all">All outcomes</option><option value="passed">Passed</option><option value="failed">Failed</option><option value="regressed">Regressions</option><option value="anomaly">Anomalies</option><option value="observed">Observed</option><option value="pending">Not run</option></select><button id="debugImportInboxButton" type="button">Import examples</button><button id="debugRunInboxButton" type="button" disabled>Run benchmark</button></div><div id="debugInboxList" class="debug-inbox-list"></div></section>
+              <section class="debug-tool-section" aria-labelledby="verificationTitle"><div class="model-analysis-heading"><div><p class="eyebrow">Regression check</p><h4 id="verificationTitle">Intervention verification</h4></div><span>Selected example + guardrails</span></div><label for="debugGuardrailsInput">Guardrail prompts <span>one per line</span></label><textarea id="debugGuardrailsInput" rows="4" placeholder="Prompts whose behaviour must not regress"></textarea><div class="debug-case-actions"><button id="debugRunVerificationButton" class="debug-primary-action" type="button" disabled>Verify intervention</button><button id="debugExportReportButton" type="button">Export debug report</button></div><div id="debugVerificationResult" class="debug-verification-result" hidden></div></section>
+            </div>
+          </aside>
+
+          <aside id="inspector" class="inspector" aria-label="Selected node details" hidden>
+            <div class="inspector-actions">
+              <button id="toggleWatchNodeButton" class="inspector-copy" type="button">Watch</button>
+              <button id="copyNodePathButton" class="inspector-copy" type="button">Copy path</button>
+              <button id="closeInspectorButton" class="inspector-close" type="button" aria-label="Close inspector" title="Close inspector">×</button>
+            </div>
+            <span id="inspectorActionStatus" class="sr-only" role="status" aria-live="polite"></span>
+            <header class="inspector-header">
+              <p id="inspectorKind" class="eyebrow">Module</p>
+              <h3 id="inspectorName"></h3>
+              <p id="inspectorDescription" class="inspector-description"></p>
+            </header>
+            <div id="inspectorTabs" class="inspector-tabs" role="tablist" aria-label="Detail views">
+              <button id="inspectorTabOverview" type="button" role="tab" data-inspector-tab="overview" aria-controls="inspectorPanelOverview" aria-selected="true">Item</button>
+              <button id="inspectorTabTensors" type="button" role="tab" data-inspector-tab="tensors" aria-controls="inspectorPanelTensors" aria-selected="false" tabindex="-1">Tensor order <span id="inspectorTensorCount"></span></button>
+              <button id="inspectorTabHuggingFace" type="button" role="tab" data-inspector-tab="huggingface" aria-controls="inspectorPanelHuggingFace" aria-selected="false" tabindex="-1">Hugging Face</button>
+              <button id="inspectorTabRaw" type="button" role="tab" data-inspector-tab="raw" aria-controls="inspectorPanelRaw" aria-selected="false" tabindex="-1">Raw</button>
+            </div>
+            <div class="inspector-scroll">
+              <section id="inspectorPanelOverview" class="inspector-panel" data-inspector-panel="overview" role="tabpanel" aria-labelledby="inspectorTabOverview">
+                <dl id="inspectorDetails"></dl>
+                <section id="nodeAnnotationEditor" class="node-annotation-editor" aria-labelledby="nodeAnnotationTitle">
+                  <div class="node-annotation-heading"><h4 id="nodeAnnotationTitle">Research annotation</h4><span id="nodeAnnotationStatus"></span></div>
+                  <label for="nodeEvidenceSelect">Evidence label</label>
+                  <select id="nodeEvidenceSelect"><option value="hypothesis">Hypothesis</option><option value="observation">Observation</option><option value="causal">Causal intervention</option><option value="note">Note</option></select>
+                  <label for="nodeAnnotationInput">Note</label>
+                  <textarea id="nodeAnnotationInput" rows="3" maxlength="2000" placeholder="Why is this component worth tracking?"></textarea>
+                  <button id="saveNodeAnnotationButton" type="button">Save annotation</button>
+                  <p>Labels record your interpretation. “Causal intervention” should only describe a measured activation intervention in this exact run context.</p>
+                </section>
+                <div id="inspectorConnections" class="inspector-sections"></div>
+              </section>
+              <section id="inspectorPanelTensors" class="inspector-panel" data-inspector-panel="tensors" role="tabpanel" aria-labelledby="inspectorTabTensors" hidden>
+                <div id="inspectorTensors" class="inspector-tensors"></div>
+              </section>
+              <section id="inspectorPanelHuggingFace" class="inspector-panel" data-inspector-panel="huggingface" role="tabpanel" aria-labelledby="inspectorTabHuggingFace" hidden>
+                <div id="inspectorHuggingFace" class="inspector-sections"></div>
+              </section>
+              <section id="inspectorPanelRaw" class="inspector-panel" data-inspector-panel="raw" role="tabpanel" aria-labelledby="inspectorTabRaw" hidden>
+                <div id="inspectorRaw" class="inspector-sections"></div>
+              </section>
+            </div>
+          </aside>
+          <span id="graphAnnouncement" class="sr-only" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+    </main>
+
+    <div id="settingsOverlay" class="settings-overlay" hidden>
+      <button id="settingsBackdrop" class="settings-backdrop" type="button" aria-label="Close settings"></button>
+      <aside id="settingsDrawer" class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
+        <header class="settings-header">
+          <div><p class="eyebrow">Workspace preferences</p><h2 id="settingsTitle">Settings</h2></div>
+          <button id="closeSettingsButton" class="settings-close" type="button" aria-label="Close settings">×</button>
+        </header>
+        <div class="settings-scroll">
+          <section class="settings-group" aria-labelledby="accountSettingsTitle">
+            <div class="settings-group-heading"><span>01</span><div><h3 id="accountSettingsTitle">Hugging Face</h3><p>Identity, private repositories, and persistent authentication.</p></div></div>
+            <div id="settingsAccountMount"></div>
+          </section>
+          <section class="settings-group" aria-labelledby="workerSettingsTitle">
+            <div class="settings-group-heading"><span>02</span><div><h3 id="workerSettingsTitle">Execution worker</h3><p>Ephemeral GPU compute and prompt-conditioned hooks.</p></div></div>
+            <div id="settingsWorkerMount"></div>
+          </section>
+          <section class="settings-privacy"><strong>Local-first session storage</strong><p>Secrets stay in the loopback server’s memory. Browser scripts receive only protected session cookies.</p></section>
+        </div>
+      </aside>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
