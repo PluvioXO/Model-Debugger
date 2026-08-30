@@ -1,4 +1,4 @@
-"""Hugging Face repository inspection and Safetensors metadata parsing."""
+"""Safe Hugging Face repository inspection with capability-aware fallbacks."""
 
 from __future__ import annotations
 
@@ -112,9 +112,53 @@ def weight_file_names(files: list[ModelFile]) -> list[str]:
     if canonical:
         return sorted(canonical, key=_natural_path_key)
     return sorted(
-        [file.name for file in files if file.name.endswith(".safetensors") and "optimizer" not in file.name],
+        [
+            file.name for file in files
+            if file.name.endswith(".safetensors")
+            and "optimizer" not in file.name.lower()
+            and "adapter" not in PurePosixPath(file.name).name.lower()
+        ],
         key=_natural_path_key,
     )
+
+
+def _checkpoint_file_inventory(files: list[ModelFile]) -> dict[str, list[str]]:
+    inventory = {
+        "pytorch": [],
+        "adapter": [],
+        "gguf": [],
+        "tensorflow": [],
+        "flax": [],
+    }
+    ignored = ("optimizer", "training_args", "scheduler", "rng_state")
+    for file in files:
+        name = PurePosixPath(file.name).name.lower()
+        if "adapter" in name and name.endswith((".safetensors", ".bin", ".pt", ".pth")):
+            inventory["adapter"].append(file.name)
+        elif name.endswith(".gguf"):
+            inventory["gguf"].append(file.name)
+        elif name.endswith((".h5", ".ckpt")) or name.startswith("tf_model"):
+            inventory["tensorflow"].append(file.name)
+        elif name.endswith(".msgpack") or name.startswith("flax_model"):
+            inventory["flax"].append(file.name)
+        elif name.endswith((".bin", ".pt", ".pth")) and not any(word in name for word in ignored):
+            inventory["pytorch"].append(file.name)
+    return {key: sorted(values, key=_natural_path_key) for key, values in inventory.items()}
+
+
+def _pytorch_manifest(artifacts: dict) -> tuple[str | None, dict | None]:
+    for name, artifact in sorted(artifacts.items(), key=lambda item: _natural_path_key(item[0])):
+        data = artifact.get("data") if isinstance(artifact, dict) else None
+        if name.lower().endswith(".bin.index.json") and isinstance(data, dict) and isinstance(data.get("weight_map"), dict):
+            return name, data
+    return None, None
+
+
+def _known_file_bytes(files: list[ModelFile], names: list[str]) -> int | None:
+    selected = [file for file in files if file.name in set(names)]
+    if not selected or any(file.size is None for file in selected):
+        return None
+    return sum(int(file.size or 0) for file in selected)
 
 
 def normalise_dtype(dtype: str) -> str:
@@ -311,6 +355,7 @@ def _artifact_priority(path: str) -> tuple[int, str]:
         "adapter_config.json",
         "quantization_config.json",
         "model.safetensors.index.json",
+        "pytorch_model.bin.index.json",
         "readme.md",
     }
     return (0 if name in preferred else 1 if "/" not in path else 2, path)
@@ -433,42 +478,120 @@ def inspect_model(model_id: str, revision: str, token: str = "") -> dict:
         raise InspectionError("The Hugging Face config is not an object", 422)
     info = _merge_objects(info_expanded, info_security, info_blob)
     files = repository_files(info)
+    artifacts, artifact_inspection = inspect_artifacts(files, model_path, revision_path, token)
     weights = weight_file_names(files)
-    if not weights:
-        raise InspectionError("This repository does not expose Safetensors weights", 422)
     if len(weights) > MAX_SHARDS:
         raise InspectionError(
             f"The checkpoint has {len(weights)} shards; the current inspection limit is {MAX_SHARDS}", 422
         )
-
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_HEADER_REQUESTS) as executor:
-        prefixes = list(
-            executor.map(
-                lambda file_name: fetch_safetensors_prefix(model_path, revision_path, file_name, token),
-                weights,
-            )
-        )
     tensors: dict[str, dict] = {}
     file_records: list[dict] = []
     tensor_bytes = 0
-    checkpoint_tensor_index = 0
-    for shard_index, (file_name, prefix) in enumerate(zip(weights, prefixes, strict=True)):
-        shard_tensors, record, shard_bytes = inspect_safetensors_file(
-            model_path, revision_path, file_name, token, prefix
-        )
-        for name in sorted(
-            shard_tensors,
-            key=lambda tensor_name: shard_tensors[tensor_name]["safetensors"]["fileTensorIndex"],
-        ):
-            safetensors = shard_tensors[name]["safetensors"]
-            safetensors["shardIndex"] = shard_index
-            safetensors["checkpointIndex"] = checkpoint_tensor_index
-            checkpoint_tensor_index += 1
-        tensors.update(shard_tensors)
-        file_records.append(record)
-        tensor_bytes += shard_bytes
+    checkpoint_inventory = _checkpoint_file_inventory(files)
+    resolver: dict
+    if weights:
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_HEADER_REQUESTS) as executor:
+            prefixes = list(
+                executor.map(
+                    lambda file_name: fetch_safetensors_prefix(model_path, revision_path, file_name, token),
+                    weights,
+                )
+            )
+        checkpoint_tensor_index = 0
+        for shard_index, (file_name, prefix) in enumerate(zip(weights, prefixes, strict=True)):
+            shard_tensors, record, shard_bytes = inspect_safetensors_file(
+                model_path, revision_path, file_name, token, prefix
+            )
+            for name in sorted(
+                shard_tensors,
+                key=lambda tensor_name: shard_tensors[tensor_name]["safetensors"]["fileTensorIndex"],
+            ):
+                safetensors = shard_tensors[name]["safetensors"]
+                safetensors["shardIndex"] = shard_index
+                safetensors["checkpointIndex"] = checkpoint_tensor_index
+                checkpoint_tensor_index += 1
+            tensors.update(shard_tensors)
+            file_records.append(record)
+            tensor_bytes += shard_bytes
+        resolver = {
+            "tier": "checkpoint-mapped",
+            "label": "Checkpoint mapped",
+            "format": "safetensors",
+            "checkpointFiles": weights,
+            "checkpointFileCount": len(weights),
+            "tensorNames": True,
+            "tensorShapes": True,
+            "tensorDtypes": True,
+            "safeMetadataOnly": True,
+            "weightBytes": _known_file_bytes(files, weights),
+            "limitations": [],
+        }
+    else:
+        manifest_name, manifest = _pytorch_manifest(artifacts)
+        pytorch_files = checkpoint_inventory["pytorch"]
+        manifest_map = manifest.get("weight_map") if isinstance(manifest, dict) else None
+        if isinstance(manifest_map, dict):
+            manifest_files = sorted(
+                {str(file_name) for file_name in manifest_map.values() if isinstance(file_name, str)},
+                key=_natural_path_key,
+            )
+            for checkpoint_index, (name, file_name) in enumerate(manifest_map.items()):
+                if not isinstance(name, str) or not isinstance(file_name, str):
+                    continue
+                tensors[name] = {
+                    "shape": None,
+                    "dtype": "unknown",
+                    "checkpoint": {
+                        "format": "pytorch-manifest",
+                        "indexFile": manifest_name,
+                        "file": file_name,
+                        "checkpointIndex": checkpoint_index,
+                        "shapeKnown": False,
+                        "dtypeKnown": False,
+                    },
+                }
+            metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+            declared_bytes = metadata.get("total_size")
+            resolver = {
+                "tier": "manifest-mapped",
+                "label": "Manifest mapped",
+                "format": "pytorch",
+                "checkpointFiles": manifest_files or pytorch_files,
+                "checkpointFileCount": len(manifest_files or pytorch_files),
+                "indexFile": manifest_name,
+                "tensorNames": True,
+                "tensorShapes": False,
+                "tensorDtypes": False,
+                "safeMetadataOnly": True,
+                "weightBytes": int(declared_bytes) if isinstance(declared_bytes, (int, float)) else _known_file_bytes(files, manifest_files or pytorch_files),
+                "limitations": [
+                    "The PyTorch index exposes tensor names and shard membership but not tensor shapes, dtypes, or byte offsets.",
+                    "Remote pickle checkpoint content was not downloaded or executed during graph inspection.",
+                ],
+            }
+        else:
+            format_name, selected_files = next(
+                ((name, values) for name, values in checkpoint_inventory.items() if values),
+                ("configuration", []),
+            )
+            resolver = {
+                "tier": "configuration-scaffold",
+                "label": "Configuration scaffold",
+                "format": format_name,
+                "checkpointFiles": selected_files,
+                "checkpointFileCount": len(selected_files),
+                "tensorNames": False,
+                "tensorShapes": False,
+                "tensorDtypes": False,
+                "safeMetadataOnly": True,
+                "weightBytes": _known_file_bytes(files, selected_files),
+                "limitations": [
+                    "The repository does not expose safely range-readable tensor headers or a supported weight index.",
+                    "The circuit is derived from configuration only; tensor provenance and exact parameter counts are unavailable.",
+                    "Remote checkpoint content and custom repository code were not executed during graph inspection.",
+                ],
+            }
 
-    artifacts, artifact_inspection = inspect_artifacts(files, model_path, revision_path, token)
     payload = {
         "modelId": model_id,
         "revision": revision,
@@ -478,7 +601,8 @@ def inspect_model(model_id: str, revision: str, token: str = "") -> dict:
         "artifacts": artifacts,
         "artifactInspection": artifact_inspection,
         "tensors": tensors,
-        "files": weights,
+        "files": resolver["checkpointFiles"],
+        "resolver": resolver,
         "safetensors": {
             "format": "safetensors",
             "files": file_records,
@@ -486,6 +610,6 @@ def inspect_model(model_id: str, revision: str, token: str = "") -> dict:
             "tensorCount": len(tensors),
             "tensorBytes": tensor_bytes,
             "completeHeaderMetadata": True,
-        },
+        } if weights else None,
     }
     return {"graph": build_model_graph(payload)}

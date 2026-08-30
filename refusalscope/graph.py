@@ -523,7 +523,7 @@ def _tensor_storage_role(name: str, shape: list) -> tuple[str, str]:
     causal_mask = lowered.endswith(".attn.bias") and len(shape) >= 3
     if known_buffer or causal_mask:
         return "buffer", "recognized persistent model state"
-    return "parameter-like", "Safetensors does not encode requires_grad; classified from the tensor path"
+    return "parameter-like", "Checkpoint metadata does not encode requires_grad; classified from the tensor path"
 
 
 def _tensor_semantic_key(name: str) -> tuple:
@@ -542,18 +542,22 @@ def _tensor_records(names: list[str], tensors: dict, used: set[str]) -> tuple[li
         source = tensors.get(name)
         if not isinstance(source, dict):
             continue
-        shape = source.get("shape") if isinstance(source.get("shape"), list) else []
+        shape_known = isinstance(source.get("shape"), list)
+        shape = source.get("shape") if shape_known else []
         dtype = source.get("dtype") if isinstance(source.get("dtype"), str) else "float32"
-        count = shape_product(shape)
-        byte_count, byte_basis = _tensor_byte_size(source, count, dtype)
+        count = shape_product(shape) if shape_known else 0
+        byte_count, byte_basis = _tensor_byte_size(source, count, dtype) if shape_known else (0, "Unavailable in checkpoint manifest")
         metadata = {}
         if "safetensors" in source:
             metadata["safetensors"] = source["safetensors"]
+        if "checkpoint" in source:
+            metadata["checkpoint"] = source["checkpoint"]
         _, semantic_role, parameter_kind, semantic_confidence, semantic_source = _tensor_semantics(name)
         storage_role, storage_basis = _tensor_storage_role(name, shape)
         if storage_role == "buffer":
             parameter_kind = "Buffer"
         safetensors = metadata.get("safetensors") if isinstance(metadata.get("safetensors"), dict) else {}
+        checkpoint = metadata.get("checkpoint") if isinstance(metadata.get("checkpoint"), dict) else safetensors
         records.append({
             "id": f"parameter:{name}",
             "name": name,
@@ -561,6 +565,7 @@ def _tensor_records(names: list[str], tensors: dict, used: set[str]) -> tuple[li
             "path": name,
             "description": "",
             "shape": shape,
+            "shapeKnown": shape_known,
             "dtype": dtype,
             "trainable": None,
             "storageRole": storage_role,
@@ -584,9 +589,9 @@ def _tensor_records(names: list[str], tensors: dict, used: set[str]) -> tuple[li
                 "automatic": True,
                 "semanticConfidence": semantic_confidence,
                 "semanticSource": semantic_source,
-                "checkpointIndex": safetensors.get("checkpointIndex"),
-                "shardIndex": safetensors.get("shardIndex"),
-                "fileTensorIndex": safetensors.get("fileTensorIndex"),
+                "checkpointIndex": checkpoint.get("checkpointIndex"),
+                "shardIndex": checkpoint.get("shardIndex"),
+                "fileTensorIndex": checkpoint.get("fileTensorIndex"),
             },
         })
         used.add(name)
@@ -1107,7 +1112,20 @@ def build_model_graph(payload: dict) -> dict:
     if not isinstance(config, dict):
         raise GraphError("The Hugging Face config is not an object")
     if not isinstance(tensors, dict):
-        raise GraphError("The Safetensors inventory is not an object")
+        raise GraphError("The checkpoint inventory is not an object")
+    resolver = payload.get("resolver") if isinstance(payload.get("resolver"), dict) else {
+        "tier": "checkpoint-mapped",
+        "label": "Checkpoint mapped",
+        "format": "safetensors",
+        "checkpointFiles": payload.get("files", []),
+        "checkpointFileCount": len(payload.get("files", [])),
+        "tensorNames": True,
+        "tensorShapes": True,
+        "tensorDtypes": True,
+        "limitations": [],
+    }
+    resolver_tier = str(resolver.get("tier", "configuration-scaffold"))
+    checkpoint_mapped = resolver_tier == "checkpoint-mapped"
     model_id = str(payload.get("modelId", ""))
     revision = str(payload.get("revision") or "main")
     sha = str(payload.get("sha") or revision)
@@ -1173,7 +1191,7 @@ def build_model_graph(payload: dict) -> dict:
         attention_column = layer * 2 + 1
         mlp_column = attention_column + 1
         layer_names = _layer_names(names, family.prefix, layer)
-        _add_group(groups, layer, model_type, family.predicted or not layer_names, architecture)
+        _add_group(groups, layer, model_type, not checkpoint_mapped or family.predicted or not layer_names, architecture)
         input_norm, qkv, output_names, post_norm, mlp, layer_position, attention_aux, other = _bucket_layer(layer_names)
         topology = architecture.residual_topology
         position_node = f"l{layer}_position"
