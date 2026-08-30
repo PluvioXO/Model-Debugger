@@ -37,7 +37,7 @@ worker: worker-setup
 	$(WORKER_PYTHON) workers/modeldebugger_worker.py --port 8765 --session-file .modeldebugger/local-worker.json
 
 test: build
-	node --test src/benchmark.test.js src/debugger.test.js src/graph-routing.test.js src/dom-contract.test.js
+	node --test src/benchmark.test.js src/debugger.test.js src/graph-routing.test.js src/dom-contract.test.js src/gpt2-diagnostic.test.js
 	$(PYTHON) -m unittest discover -s tests -v
 
 clean:

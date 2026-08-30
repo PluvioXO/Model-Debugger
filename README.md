@@ -2,6 +2,14 @@
 
 ModelDebugger is a local mechanistic-interpretability interface for Hugging Face causal language-model checkpoints. Its only input is a Hugging Face repository ID and optional revision; it does not accept hand-authored model JSON.
 
+## How Daytona is used
+
+Daytona is ModelDebugger's optional managed execution-worker path. Checkpoint metadata inspection, circuit reconstruction, saved research cases, the tutorial, and the preloaded GPT-2 diagnostic do not require Daytona. The recorded GPT-2 diagnostic in this repository was captured with the local worker on Apple Metal, not on Daytona.
+
+When a user selects **Settings → Execution worker → Daytona GPU**, ModelDebugger validates the supplied Daytona API key with one bounded, read-only request. Starting execution then creates a private **spot GPU** sandbox in the user's Daytona organization, installs the same authenticated worker used for local execution, and proxies only the fixed model-loading and analysis routes through the loopback backend. On-demand Daytona capacity is never requested.
+
+The Daytona API key remains in server memory and is never stored in browser storage, the research database, or the sandbox. If the user has connected Hugging Face, its validated read token is inherited server-side by the new private sandbox without being exposed to browser JavaScript. Model weights and full activation tensors remain beside the worker; the webapp receives compact measurements and explicitly bounded activation slices. Disconnecting deletes the sandbox immediately, with a two-hour automatic-deletion backstop for interrupted local sessions. Daytona usage is billed to the user's account and requires spot GPU credits in the selected organization.
+
 Product purpose, evidence standards, design principles, and the inheritance contract for future components are defined in [`MISSION.md`](MISSION.md).
 
 The circuit diagram and research-paper interface are visually inspired by [Transformer Circuits](https://transformer-circuits.pub/) and its mathematical treatment of residual-stream computation. The interface loads the source site's Styrene A and Tiempos Text webfonts directly from its published CDN, with system fallbacks.
@@ -22,6 +30,24 @@ The application has a public product landing view and a separate research worksp
 
 Tensor ordering is automatic whenever tensor names are safely available. Semantic operation order is inferred from checkpoint tensor paths with architecture-neutral aliases and a stable humanized path fallback for unknown modules. Physical order uses Safetensors byte offsets for exact maps or checkpoint-index declaration order for manifest maps; configuration scaffolds state that tensor ordering is unavailable. The UI labels fallbacks and unresolved fields instead of manufacturing provenance.
 
+## Screenshots
+
+These captures come from the actual web application running an instrumented GPT-2 workflow. Structural, observational, and causal evidence remain labelled separately.
+
+| Checkpoint structure | Inference profile |
+|---|---|
+| ![GPT-2 checkpoint graph with twelve mapped decoder blocks](assets/tutorial/01-checkpoint-map.png) | ![Worker-side waterfall for an instrumented GPT-2 forward pass](assets/tutorial/02-inference-profile.png) |
+| Exact model provenance and circuit structure before interpretation. | Synchronized worker phases; hook-enabled latency is not raw serving latency. |
+
+| Paired comparison | Causal intervention |
+|---|---|
+| ![Selected and reference GPT-2 traces with token alignment and internal divergence](assets/tutorial/03-paired-comparison.png) | ![GPT-2 intervention lab with a measured final-token ablation](assets/tutorial/04-intervention-result.png) |
+| Observational divergence nominates candidates but does not establish cause. | The controlled manipulation is causal for its recorded component, prompt, position, and metric. |
+
+![Intervention verification across the selected GPT-2 example and guardrail prompts](assets/tutorial/05-verification-result.png)
+
+Verification reports the selected case and guardrails as unchanged instead of manufacturing a successful fix.
+
 ## Run
 
 ```bash
@@ -29,6 +55,8 @@ npm run dev
 ```
 
 The first run creates an isolated `.modeldebugger-app` environment, installs the pinned Daytona SDK, and starts the Python server at <http://localhost:4173>.
+
+Open <http://localhost:4173/demo/gpt2-capital-diagnostic> for a worker-free, preloaded research record captured from a real GPT-2 run. It follows one matched France/Germany prompt pair from a declared Paris−Berlin logit metric through observational divergence and a 36-cell activation-patching sweep, then states the supported diagnostic and its claim boundary.
 
 For repeatable UX work, use **Open GPT-2 example** below the checkpoint importer. It loads the real `openai-community/gpt2` graph through the normal Hugging Face route and opens a six-example benchmark fixture. Initial row outcomes and scores are explicitly illustrative; running the benchmark with a worker replaces them with observed GPT-2 measurements. The repository and revision fields remain editable for the ordinary any-model workflow.
 

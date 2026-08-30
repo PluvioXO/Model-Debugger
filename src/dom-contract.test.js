@@ -80,6 +80,11 @@ test("landing page includes the complete advanced field guide", () => {
   ].forEach((asset) => assert.match(html, new RegExp(`/assets/tutorial/${asset}`)));
 });
 
+test("landing page links to the dedicated recorded GPT-2 diagnostic", () => {
+  assert.match(html, /href="\/demo\/gpt2-capital-diagnostic"/);
+  assert.match(html, /Open the recorded GPT-2 diagnostic/);
+});
+
 test("workspace guide control returns to the landing tutorial", () => {
   assert.match(html, /id="tutorialButton"/);
   assert.match(application, /function openLandingTutorial\(\)/);

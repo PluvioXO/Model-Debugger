@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import errno
 import hmac
 import json
 import math
@@ -3016,7 +3017,15 @@ def main() -> None:
         parser.error("--host must be loopback or 0.0.0.0 for a private managed runtime")
     secret = args.secret.strip() or secrets.token_urlsafe(32)
     state = WorkerState(secret=secret)
-    server = WorkerServer((args.host, args.port), state)
+    try:
+        server = WorkerServer((args.host, args.port), state)
+    except OSError as error:
+        if error.errno == errno.EADDRINUSE:
+            parser.error(
+                f"port {args.port} is already in use. A local ModelDebugger worker may already be "
+                "running; reuse it from Settings → Local machine, stop it, or choose another --port."
+            )
+        raise
     session_path = Path(args.session_file).expanduser().resolve() if args.session_file else None
     if session_path is not None:
         session_path.parent.mkdir(parents=True, exist_ok=True)
