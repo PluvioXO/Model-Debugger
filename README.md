@@ -1,52 +1,77 @@
 # ModelDebugger
 
-ModelDebugger is a local mechanistic-interpretability interface for Hugging Face causal language-model checkpoints. Its only input is a Hugging Face repository ID and optional revision; it does not accept hand-authored model JSON.
+> **From checkpoint map to causal evidence.**
+
+ModelDebugger turns a compatible Hugging Face causal language model into an interactive circuit atlas and a reproducible mechanistic-interpretability workspace. Inspect structure without executing remote model code, attach private compute only when an experiment needs weights, and carry a hypothesis from paired traces through intervention and verification.
+
+<p align="center">
+  <a href="#run"><strong>Run locally</strong></a> ·
+  <a href="#how-daytona-is-used">Daytona execution</a> ·
+  <a href="#product-tour">Product tour</a> ·
+  <a href="MISSION.md">Research standard</a>
+</p>
+
+![ModelDebugger landing page with the product workflow from checkpoint inspection to causal evidence](assets/readme/01-landing.png)
+
+## What makes it different
+
+| Architecture-neutral inspection | Evidence discipline | Private, portable execution |
+|---|---|---|
+| Resolves the strongest safe checkpoint representation available—exact Safetensors map, indexed manifest, or explicitly limited configuration scaffold—without unpickling remote weights. | Keeps structural, observational, and causal claims separate. Unmeasured values stay unmeasured, failed interventions stay negative, and unsupported methods are omitted. | Runs the same authenticated worker on a local machine or a private Daytona spot GPU. Weights and full activations stay beside the worker; cases and compact results remain local. |
 
 ## How Daytona is used
 
-Daytona is ModelDebugger's optional managed execution-worker path. Checkpoint metadata inspection, circuit reconstruction, saved research cases, the tutorial, and the preloaded GPT-2 diagnostic do not require Daytona. The recorded GPT-2 diagnostic in this repository was captured with the local worker on Apple Metal, not on Daytona.
+Daytona is the optional managed execution path, not a requirement for exploring ModelDebugger. Checkpoint reconstruction, saved cases, the field guide, and the preloaded GPT-2 diagnostic work without it; the included diagnostic was recorded on a local Apple Metal worker.
 
-When a user selects **Settings → Execution worker → Daytona GPU**, ModelDebugger validates the supplied Daytona API key with one bounded, read-only request. Starting execution then creates a private **spot GPU** sandbox in the user's Daytona organization, installs the same authenticated worker used for local execution, and proxies only the fixed model-loading and analysis routes through the loopback backend. On-demand Daytona capacity is never requested.
+| 01 · Validate | 02 · Execute | 03 · Remove |
+|---|---|---|
+| **Check API key** makes one bounded, read-only request and consumes no GPU credits. | ModelDebugger creates a private **spot-only GPU** sandbox in the user's organization and installs the same worker used locally. | Disconnecting deletes the sandbox immediately, with a two-hour deletion backstop for interrupted sessions. |
 
-The Daytona API key remains in server memory and is never stored in browser storage, the research database, or the sandbox. If the user has connected Hugging Face, its validated read token is inherited server-side by the new private sandbox without being exposed to browser JavaScript. Model weights and full activation tensors remain beside the worker; the webapp receives compact measurements and explicitly bounded activation slices. Disconnecting deletes the sandbox immediately, with a two-hour automatic-deletion backstop for interrupted local sessions. Daytona usage is billed to the user's account and requires spot GPU credits in the selected organization.
+![ModelDebugger execution settings with the spot-only Daytona GPU recommendation and credential controls](assets/readme/03-daytona-execution.png)
 
-Product purpose, evidence standards, design principles, and the inheritance contract for future components are defined in [`MISSION.md`](MISSION.md).
+The Daytona key remains in loopback-server memory and is never written to browser storage, the research database, or the sandbox. A connected Hugging Face read token is inherited server-side without exposure to browser JavaScript. Fixed analysis routes return compact measurements and explicitly bounded activation slices; model weights and full activation tensors remain in the sandbox. Daytona usage is billed to the user's account and requires spot GPU credits in the selected organization.
 
-The circuit diagram and research-paper interface are visually inspired by [Transformer Circuits](https://transformer-circuits.pub/) and its mathematical treatment of residual-stream computation. The interface loads the source site's Styrene A and Tiempos Text webfonts directly from its published CDN, with system fallbacks.
+## Product tour
 
-The app inventories the repository and reads `config.json` plus the strongest checkpoint metadata that is safe to inspect without executing remote content. Safetensors headers produce an exact tensor map; PyTorch index JSON produces a name-and-shard manifest; monolithic PyTorch, GGUF, adapter-only, and configuration-only repositories produce an explicitly limited configuration scaffold. The Python backend never unpickles remote weights merely to draw a graph, and the browser labels the selected resolver tier and every unavailable exact fact.
+### Inspect a checkpoint as a circuit
 
-The graph also exposes a residual-stream ledger. It accounts for the embedding, attention write, MLP write, and accumulated residual state at every decoder block, links each row back to the corresponding graph node, and reserves signed activation-norm and direct-logit-attribution fields for prompt-conditioned traces. Because checkpoint metadata does not contain activations, those run-dependent values are explicitly shown as unmeasured instead of being estimated or fabricated.
+Search, pan, and zoom through a provenance-aware graph; select any tensor-backed operation to inspect shape, dtype, source path, residual role, and downstream routing. Stacked cards stay within their layout lane and obstacle-aware edges route cleanly around nodes.
 
-After an execution worker loads the open checkpoint, **Run model** becomes a prompt-conditioned model interface. A hooked pass displays prompt tokens, next-token probabilities, target rank, output entropy, KV-cache size, device memory, residual norms, target-token DLA, residual-update norms, convergence to the final residual state, attention/MLP write traces, an attention-head entropy map, and the hook inventory. A synchronized inference waterfall separates request preparation, tokenization, input staging, hook setup, the instrumented model forward, output scoring, activation analysis, metrics, optional logit-lens work, result assembly, and run retention. It reports worker time separately from the browser-observed round trip and labels hook-enabled latency as distinct from raw serving latency. The same measurements are projected back onto graph nodes and component edges, so charts and circuit topology remain linked. Views that fail runtime capability checks for the loaded model are omitted rather than left as dead controls.
+![Focused GPT-2 circuit atlas with Layer 9 attention output projection selected and its inspector open](assets/readme/02-circuit-atlas.png)
 
-The debugging workbench persists complete research cases in local SQLite storage. A case records the pinned model/revision, benchmark examples, selected/reference prompts, expected behaviour, tokenizer and chat-template context, metric, seed, dtype/device, generation settings, notes, paired traces, interventions, candidate circuit, and verification results. Saved cases can be reopened after a refresh or server restart from the **Debug cases** library.
+### Compare matched prompts before making a causal claim
 
-The connected workflow includes six behaviour metrics; aligned selected/reference traces; ranked residual, cosine, logit-lens, attention, contribution, and cache divergence; zero/mean/resample/patch/scale/steering interventions; signed causal effects; EAP candidate discovery followed by intervention-backed ACDC pruning; a block/head/token/feature microscope; numerical, hook, cache, latency, and memory diagnostics; JSONL/CSV/Hugging Face benchmark exploration across any outcome; guardrail verification; and a portable Markdown report with settings, evidence tables, a Mermaid circuit graph, results, machine-readable JSON, and caveats.
+Aligned traces rank where two behaviours diverge across residual state, cosine distance, target-token attribution, attention, component contribution, and cache state. These are candidate-generating observations—not proof of causality.
 
-Circuit discovery is an architecture-neutral, residual-write adaptation inspired by Conmy et al.'s [Towards Automated Circuit Discovery for Mechanistic Interpretability](https://arxiv.org/abs/2304.14997) and Syed, Rager, and Conmy's [Attribution Patching Outperforms Automated Circuit Discovery](https://arxiv.org/abs/2310.10348). It does not vendor the original TransformerLens-specific code: EAP supplies a first-order candidate ranking, then an ACDC-style greedy pass evaluates actual control-activation patches while deleting candidate residual-write edges below the selected metric threshold. The UI reports that bounded adaptation, its fidelity, stability, and limitations rather than presenting it as a reproduction of every edge type in the original implementation.
+![Ranked paired-analysis candidates projected onto the GPT-2 graph](assets/readme/04-paired-analysis.png)
 
-The application has a public product landing view and a separate research workspace. Its field guide includes screenshot-led end-to-end journeys captured from a real instrumented GPT-2 run, including a negative intervention result that is reported as unchanged rather than presented as a fix. Launching the workspace opens the checkpoint importer, account session, graph canvas, inspector, residual ledger, and optional Daytona or local execution controls without navigating away from the single-page app.
+### Follow a complete diagnostic, not a cherry-picked chart
 
-Tensor ordering is automatic whenever tensor names are safely available. Semantic operation order is inferred from checkpoint tensor paths with architecture-neutral aliases and a stable humanized path fallback for unknown modules. Physical order uses Safetensors byte offsets for exact maps or checkpoint-index declaration order for manifest maps; configuration scaffolds state that tensor ordering is unavailable. The UI labels fallbacks and unresolved fields instead of manufacturing provenance.
+The dedicated GPT-2 research record preserves its prompts, metric, provenance, intervention sweep, measured result, and claim boundary on one shareable route. The headline updates only when the recorded evidence supports it.
 
-## Screenshots
+![Preloaded GPT-2 capital-recall diagnostic with measured clean and patched margins and a stated claim boundary](assets/readme/05-research-diagnostic.png)
 
-These captures come from the actual web application running an instrumented GPT-2 workflow. Structural, observational, and causal evidence remain labelled separately.
+### Keep the intervention surface visible
 
-| Checkpoint structure | Inference profile |
-|---|---|
-| ![GPT-2 checkpoint graph with twelve mapped decoder blocks](assets/tutorial/01-checkpoint-map.png) | ![Worker-side waterfall for an instrumented GPT-2 forward pass](assets/tutorial/02-inference-profile.png) |
-| Exact model provenance and circuit structure before interpretation. | Synchronized worker phases; hook-enabled latency is not raw serving latency. |
+The full 12-layer × 3-component activation-patching grid remains inspectable alongside the strongest effect, region summary, and interpretation—36 recorded cells rather than a single favourable example.
 
-| Paired comparison | Causal intervention |
-|---|---|
-| ![Selected and reference GPT-2 traces with token alignment and internal divergence](assets/tutorial/03-paired-comparison.png) | ![GPT-2 intervention lab with a measured final-token ablation](assets/tutorial/04-intervention-result.png) |
-| Observational divergence nominates candidates but does not establish cause. | The controlled manipulation is causal for its recorded component, prompt, position, and metric. |
+![Complete GPT-2 activation-patching heatmap with all 36 intervention cells and result summaries](assets/readme/06-causal-grid.png)
 
-![Intervention verification across the selected GPT-2 example and guardrail prompts](assets/tutorial/05-verification-result.png)
+All images above are fresh captures from the running web application; no interface mock-ups are used.
 
-Verification reports the selected case and guardrails as unchanged instead of manufacturing a successful fix.
+## What it does
+
+The app accepts a Hugging Face repository ID and optional revision rather than hand-authored model JSON. It inventories the repository and reads `config.json` plus the strongest checkpoint metadata that is safe to inspect. Exact maps preserve tensor names, dtypes, shapes, offsets, sizes, ranks, and shard order; weaker resolver tiers label unavailable facts instead of inventing them.
+
+Once a worker loads the checkpoint, **Run model** records prompt tokens, next-token probabilities, target rank, output entropy, KV-cache and device memory, residual norms, target-token direct logit attribution, component writes, attention-head entropy, and hook coverage. A synchronized inference waterfall separates request preparation, tokenization, input staging, hook setup, instrumented forward, scoring, activation analysis, optional logit-lens work, result assembly, and retention. Worker time is reported separately from browser-observed round-trip latency.
+
+The debugging workbench persists complete research cases in local SQLite: pinned model and revision, benchmark examples, prompts, expected behaviour, tokenizer and chat-template context, metric, seed, generation settings, paired traces, interventions, candidate circuit, verification, and notes. Cases survive refreshes and server restarts and export as a portable Markdown report with evidence tables, a Mermaid circuit, machine-readable JSON, and caveats.
+
+The model-aware workflow includes six behaviour metrics; zero, mean, resample, patch, scale, and steering interventions; signed causal effects; EAP candidate discovery followed by intervention-backed ACDC pruning; a block/head/token/feature microscope; numerical, hook, cache, latency, and memory diagnostics; benchmark exploration; and guardrail verification. Every runtime view is capability-gated for the loaded architecture, so a method that cannot run is absent rather than presented as a dead control.
+
+Circuit discovery is an architecture-neutral residual-write adaptation inspired by Conmy et al.'s [Towards Automated Circuit Discovery for Mechanistic Interpretability](https://arxiv.org/abs/2304.14997) and Syed, Rager, and Conmy's [Attribution Patching Outperforms Automated Circuit Discovery](https://arxiv.org/abs/2310.10348). It uses EAP for first-order candidate ranking, then evaluates actual control-activation patches in an ACDC-style greedy pass. The UI reports the adaptation's bounded scope, fidelity, stability, and limitations instead of presenting it as a reproduction of every TransformerLens edge type.
+
+Product purpose, evidence standards, design principles, and the inheritance contract for future components live in [`MISSION.md`](MISSION.md). The circuit presentation is visually inspired by [Transformer Circuits](https://transformer-circuits.pub/) and its mathematical treatment of residual-stream computation.
 
 ## Run
 
