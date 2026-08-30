@@ -793,7 +793,7 @@ def _runtime_diagnostics(
         "mlpOutputs": "mlp" in captured_categories,
         "attentionProbabilities": bool(attention),
         "kvCache": bool(cache.get("available")),
-        "activationSlices": True,
+        "activationSlices": bool(layers or attention),
         "interventions": bool({"residual", "attention", "mlp"} & captured_categories),
         "rootCauseTrace": bool({"attention", "mlp"} & captured_categories),
     }
@@ -1277,6 +1277,7 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
     import torch
     import transformers
 
+    waterfall = InferenceWaterfall()
     with state.lock:
         model = state.model
         tokenizer = state.tokenizer
@@ -1296,10 +1297,22 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
         torch.cuda.reset_peak_memory_stats()
     top_k = max(1, min(50, int(payload.get("topK", 10))))
     add_special_tokens = bool(payload.get("addSpecialTokens", True))
+    waterfall.finish(
+        "request-preparation",
+        "Request preparation",
+        "cpu",
+        "Prompt/chat-template preparation, validation, random seeds, and run options.",
+    )
     encoded = tokenizer(prompt, return_tensors="pt", add_special_tokens=add_special_tokens)
     token_count = int(encoded["input_ids"].shape[-1])
     if token_count > MAX_PROMPT_TOKENS:
         raise ValueError(f"Prompt is {token_count} tokens; the worker limit is {MAX_PROMPT_TOKENS}")
+    waterfall.finish(
+        "tokenization",
+        "Tokenization",
+        "cpu",
+        "Tokenizer encoding and prompt-length validation.",
+    )
     input_device = _model_input_device(model)
     encoded = {key: value.to(input_device) for key, value in encoded.items()}
     token_ids = [int(value) for value in encoded["input_ids"][0].tolist()]
@@ -1312,6 +1325,13 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
         if source_id:
             source = internal_sources.get(source_id) if isinstance(internal_sources, dict) else None
             source_records[source_id] = source if isinstance(source, RunRecord) else _run_record(state, source_id)
+    _synchronize_accelerator(torch, input_device)
+    waterfall.finish(
+        "input-staging",
+        "Input staging",
+        "transfer",
+        "Tensor transfer to the model input device, token labels, and intervention-source lookup.",
+    )
 
     captures: dict[tuple[int, str], tuple[str, Any]] = {}
     attention_head_captures: dict[int, tuple[str, Any]] = {}
@@ -1379,7 +1399,13 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
         if layer is not None and category is not None:
             handles.append(module.register_forward_pre_hook(pre_hook_for(name, layer, category)))
             handles.append(module.register_forward_hook(hook_for(name, layer, category)))
-    forward_started = time.perf_counter()
+    _synchronize_accelerator(torch, input_device)
+    waterfall.finish(
+        "instrumentation",
+        "Instrumentation setup",
+        "instrumentation",
+        "Runtime discovery and registration of normalization, residual, attention, MLP, and head hooks.",
+    )
     try:
         with torch.inference_mode():
             outputs = model(
@@ -1392,6 +1418,13 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
     finally:
         for handle in handles:
             handle.remove()
+    _synchronize_accelerator(torch, input_device)
+    waterfall.finish(
+        "model-forward",
+        "Instrumented model forward",
+        "model",
+        "Causal-LM forward pass with hidden states, attention, KV cache, and activation capture enabled.",
+    )
 
     logits = outputs.logits[0, -1].detach().float()
     metric_specification = _normalise_metric(payload.get("metric"), str(payload.get("targetToken", "")))
@@ -1441,6 +1474,13 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
     verified_normalization = _verified_final_normalization(
         normalization_calls,
         hidden_states[-1] if hidden_states else None,
+    )
+    _synchronize_accelerator(torch, input_device)
+    waterfall.finish(
+        "output-scoring",
+        "Output scoring",
+        "analysis",
+        "Target resolution, top-token probabilities, entropy, rank, and final-normalization verification.",
     )
     latest: dict[str, Any] = {}
     layers = []
@@ -1508,6 +1548,13 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
     attention = _attention_summaries(output_attentions, tokens, latest)
     attribution = _attribution_summary(layers, target_logit)
     cache = _cache_summary(getattr(outputs, "past_key_values", None))
+    _synchronize_accelerator(torch, input_device)
+    waterfall.finish(
+        "activation-analysis",
+        "Activation analysis",
+        "analysis",
+        "Residual/component summaries, attention statistics, direct projections, and KV-cache inventory.",
+    )
     continuation = None
     if metric_specification["kind"] in {"sequence_loss", "multi_token_score"}:
         continuation_handles = []
@@ -1541,6 +1588,13 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
         finally:
             for handle in continuation_handles:
                 handle.remove()
+        _synchronize_accelerator(torch, input_device)
+        waterfall.finish(
+            "continuation-metric",
+            "Continuation metric",
+            "model",
+            "Additional continuation forward pass required by the selected sequence-level metric.",
+        )
     metric = _metric_from_logits(
         logits,
         tokenizer,
@@ -1556,6 +1610,13 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
         token_count=token_count,
         hook_order=hook_order,
     )
+    _synchronize_accelerator(torch, input_device)
+    waterfall.finish(
+        "metric-diagnostics",
+        "Metric and diagnostics",
+        "analysis",
+        "Behaviour-metric evaluation, numerical checks, hook coverage, and runtime capability detection.",
+    )
     lens_settings = _normalise_lens_settings(payload.get("logitLens"))
     logit_lens = (
         _logit_lens_timeline(
@@ -1570,8 +1631,40 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
         if lens_settings["enabled"]
         else {"available": False, "stages": [], "disabled": True}
     )
+    direct_attribution_available = any(
+        isinstance(component.get("dla"), (int, float)) and math.isfinite(float(component["dla"]))
+        for component in attribution.get("components", [])
+    )
+    diagnostics["capabilities"]["directLogitAttribution"] = direct_attribution_available
+    diagnostics["capabilities"]["logitLens"] = bool(logit_lens.get("available"))
+    root_cause_metric_supported = metric.get("kind") in {
+        "target_probability",
+        "logit_difference",
+        "custom_token_groups",
+    }
+    diagnostics["capabilities"]["rootCauseTrace"] = bool(
+        diagnostics["capabilities"].get("rootCauseTrace") and root_cause_metric_supported
+    )
+    for supported, label in (
+        (direct_attribution_available, "direct logit attribution"),
+        (bool(logit_lens.get("available")), "logit-lens projection"),
+        (diagnostics["capabilities"]["rootCauseTrace"], "root-cause tracing for the selected metric"),
+    ):
+        if not supported and label not in diagnostics["unsupported"]:
+            diagnostics["unsupported"].append(label)
+    if lens_settings["enabled"]:
+        _synchronize_accelerator(torch, input_device)
+        waterfall.finish(
+            "logit-lens" if logit_lens.get("available") else "logit-lens-capability",
+            "Logit-lens analysis" if logit_lens.get("available") else "Lens capability check",
+            "analysis",
+            "Capability-verified residual normalization and vocabulary projection for sampled stages."
+            if logit_lens.get("available")
+            else "Checked public output projection and runtime-verified final normalization; no compatible lens was exposed.",
+        )
     run_id = uuid.uuid4().hex
     evidence_kind = "causal" if interventions else "observational"
+    performance: dict[str, Any] = {}
     result = {
         "ok": True,
         "runId": run_id,
@@ -1619,11 +1712,7 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
                 "transformers": str(transformers.__version__),
             },
         },
-        "performance": {
-            "durationMs": (time.perf_counter() - forward_started) * 1000,
-            "deviceMemory": _device_memory(torch),
-            "layerTimings": diagnostics.get("layerTimings", []),
-        },
+        "performance": performance,
         "evidence": {
             "kind": evidence_kind,
             "causal": bool(interventions),
@@ -1636,8 +1725,33 @@ def _forward(state: WorkerState, payload: dict[str, Any]) -> dict[str, Any]:
         key: value for key, value in payload.items()
         if key != "direction" and not key.startswith("_")
     }
+    device_memory = _device_memory(torch)
+    waterfall.finish(
+        "result-assembly",
+        "Result assembly",
+        "cpu",
+        "JSON-safe response records, provenance, context, and device-memory statistics.",
+    )
     if payload.get("_storeRun", True):
         _store_run(state, run_id, stored_request, result, latest, _cpu_tensor(logits))
+        waterfall.finish(
+            "run-retention",
+            "Run retention",
+            "storage",
+            "Bounded in-worker activation and run snapshot retained for comparisons and interventions.",
+        )
+    timing = waterfall.snapshot()
+    model_forward = next(
+        (phase["durationMs"] for phase in timing["phases"] if phase["key"] == "model-forward"),
+        None,
+    )
+    performance.update({
+        "durationMs": timing["totalMs"],
+        "modelForwardMs": model_forward,
+        "deviceMemory": device_memory,
+        "layerTimings": diagnostics.get("layerTimings", []),
+        "waterfall": timing,
+    })
     return result
 
 

@@ -37,11 +37,16 @@ test("workspace exposes the integrated trace, sweep, history, watchlist, and len
     "watchlistPanel",
     "nodeAnnotationEditor",
     "logitLensChart",
+    "inferenceWaterfall",
+    "inferenceWaterfallTotal",
   ].forEach((id) => assert.match(html, new RegExp(`id="${id}"`)));
   assert.match(application, /runtimeApi\("\/generate"/);
   assert.match(application, /runtimeApi\("\/sweep"/);
   assert.match(application, /compareRunSnapshots/);
   assert.match(application, /normaliseWatchlist/);
+  assert.match(application, /function applyRuntimeCapabilityVisibility/);
+  assert.match(html, /data-runtime-capability="logitLens"/);
+  assert.match(html, /data-runtime-capability="rootCauseTrace"/);
 });
 
 test("landing page includes the complete advanced field guide", () => {
@@ -56,6 +61,7 @@ test("landing page includes the complete advanced field guide", () => {
   [
     "tutorial-start",
     "tutorial-evidence",
+    "tutorial-examples",
     "tutorial-advanced",
     "tutorialCompare",
     "tutorialIntervene",
@@ -65,6 +71,13 @@ test("landing page includes the complete advanced field guide", () => {
     "tutorialVerify",
     "tutorialDiagnostics",
   ].forEach((id) => assert.match(html, new RegExp(`id="${id}"`)));
+  [
+    "01-checkpoint-map.png",
+    "02-inference-profile.png",
+    "03-paired-comparison.png",
+    "04-intervention-result.png",
+    "05-verification-result.png",
+  ].forEach((asset) => assert.match(html, new RegExp(`/assets/tutorial/${asset}`)));
 });
 
 test("workspace guide control returns to the landing tutorial", () => {

@@ -155,6 +155,9 @@ const elements = {
   debugMetricNegativeInput: document.querySelector("#debugMetricNegativeInput"),
   debugSeedInput: document.querySelector("#debugSeedInput"),
   modelRunSummary: document.querySelector("#modelRunSummary"),
+  inferenceWaterfallTotal: document.querySelector("#inferenceWaterfallTotal"),
+  inferenceWaterfall: document.querySelector("#inferenceWaterfall"),
+  inferenceWaterfallNote: document.querySelector("#inferenceWaterfallNote"),
   modelTokenContext: document.querySelector("#modelTokenContext"),
   modelTokenStrip: document.querySelector("#modelTokenStrip"),
   modelPredictionEntropy: document.querySelector("#modelPredictionEntropy"),
@@ -2430,6 +2433,7 @@ async function copyRuntimeCommand() {
 }
 
 async function runtimeApi(path, { method = "GET", body } = {}) {
+  const requestStarted = globalThis.performance?.now?.();
   const response = await fetch(`/api/runtime${path}`, {
     method,
     credentials: "same-origin",
@@ -2438,6 +2442,10 @@ async function runtimeApi(path, { method = "GET", body } = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error ?? `Runtime request failed (${response.status})`);
+  const requestEnded = globalThis.performance?.now?.();
+  if (path === "/forward" && payload?.performance && Number.isFinite(requestStarted) && Number.isFinite(requestEnded)) {
+    payload.performance.clientRoundTripMs = Math.max(0, requestEnded - requestStarted);
+  }
   return payload;
 }
 
@@ -2893,6 +2901,7 @@ async function disconnectRuntime() {
     const payload = await runtimeApi("/disconnect", { method: "POST", body: {} });
     state.runtime.latestRun = null;
     elements.runtimeResult.hidden = true;
+    applyRuntimeCapabilityVisibility();
     renderRuntimeConnection({ connected: false, reachable: false });
     if (payload.warning) {
       elements.runtimeStatus.classList.add("error");
@@ -2920,6 +2929,9 @@ async function loadRuntimeModel() {
       checkpointBytes: state.model.stats?.totalBytes ?? 0
     } });
     state.runtime.worker = { ...(state.runtime.worker ?? {}), modelLoaded: true, modelId: payload.modelId, revision: payload.revision, dtype: payload.dtype, device: payload.device, quantization: payload.quantization };
+    state.runtime.latestRun = null;
+    elements.runtimeResult.hidden = true;
+    applyRuntimeCapabilityVisibility();
     elements.runtimeModel.textContent = `${payload.modelId} · ${payload.dtype}${payload.quantization && payload.quantization !== "none" ? ` · ${payload.quantization}` : ""}`;
     elements.runtimeStatus.textContent = `${payload.modelId} loaded on ${payload.device}.`;
     updateModelRunReadiness();
@@ -3143,6 +3155,90 @@ function renderMetricDistributions(run) {
     label: "residual norm",
     emptyMessage: "At least two residual-state norms are required.",
   });
+}
+
+function renderInferenceWaterfall(run) {
+  elements.inferenceWaterfall.replaceChildren();
+  const performanceRecord = run?.performance ?? {};
+  const profile = performanceRecord.waterfall;
+  const phases = (profile?.phases ?? []).filter((phase) =>
+    typeof phase?.label === "string"
+    && Number.isFinite(phase.startMs)
+    && Number.isFinite(phase.durationMs)
+    && phase.startMs >= 0
+    && phase.durationMs >= 0
+  );
+  const derivedTotal = phases.reduce((maximum, phase) => Math.max(maximum, phase.startMs + phase.durationMs), 0);
+  const total = Number.isFinite(profile?.totalMs) && profile.totalMs > 0 ? profile.totalMs : derivedTotal;
+  if (!phases.length || total <= 0) {
+    elements.inferenceWaterfallTotal.textContent = "Unavailable";
+    const empty = document.createElement("p");
+    empty.className = "model-chart-empty";
+    empty.textContent = "This worker did not return a phase-level inference profile.";
+    elements.inferenceWaterfall.append(empty);
+    elements.inferenceWaterfallNote.textContent = "Restart the bundled worker to enable synchronized inference timings.";
+    return;
+  }
+
+  const forward = phases.find((phase) => phase.key === "model-forward");
+  const roundTrip = performanceRecord.clientRoundTripMs;
+  const totalParts = [`${modelMetric(total, 1)} ms worker`];
+  if (Number.isFinite(forward?.durationMs)) totalParts.push(`${modelMetric(forward.durationMs, 1)} ms forward`);
+  if (Number.isFinite(roundTrip)) totalParts.push(`${modelMetric(roundTrip, 1)} ms round trip`);
+  elements.inferenceWaterfallTotal.textContent = totalParts.join(" · ");
+
+  const axis = document.createElement("div");
+  axis.className = "inference-waterfall-axis";
+  const axisSpacer = document.createElement("span");
+  const scale = document.createElement("div");
+  const axisMetric = document.createElement("span");
+  axisMetric.textContent = "duration · share";
+  [0, 0.25, 0.5, 0.75, 1].forEach((fraction) => {
+    const tick = document.createElement("i");
+    tick.style.setProperty("--waterfall-tick", `${fraction * 100}%`);
+    tick.textContent = `${modelMetric(total * fraction, total < 10 ? 1 : 0)} ms`;
+    scale.append(tick);
+  });
+  axis.append(axisSpacer, scale, axisMetric);
+  elements.inferenceWaterfall.append(axis);
+
+  phases.forEach((phase) => {
+    const row = document.createElement("div");
+    row.className = "inference-waterfall-row";
+    row.dataset.category = phase.category || "cpu";
+    const identity = document.createElement("div");
+    const label = document.createElement("strong");
+    const category = document.createElement("small");
+    label.textContent = phase.label;
+    category.textContent = phase.category || "worker";
+    identity.append(label, category);
+    const track = document.createElement("div");
+    track.className = "inference-waterfall-track";
+    const bar = document.createElement("i");
+    const startPercent = Math.min(100, Math.max(0, phase.startMs / total * 100));
+    const durationPercent = Math.min(100 - startPercent, Math.max(0, phase.durationMs / total * 100));
+    bar.style.setProperty("--waterfall-start", `${startPercent}%`);
+    bar.style.setProperty("--waterfall-duration", `${durationPercent}%`);
+    const share = phase.durationMs / total;
+    const accessible = `${phase.label}: ${modelMetric(phase.durationMs, 2)} milliseconds, ${modelMetric(share * 100, 1)} percent of worker time.`;
+    bar.setAttribute("aria-label", accessible);
+    bar.title = `${accessible} ${phase.detail ?? ""}`.trim();
+    track.append(bar);
+    const metric = document.createElement("div");
+    const duration = document.createElement("strong");
+    const percent = document.createElement("small");
+    duration.textContent = `${modelMetric(phase.durationMs, phase.durationMs < 10 ? 2 : 1)} ms`;
+    percent.textContent = `${modelMetric(share * 100, 1)}%`;
+    metric.append(duration, percent);
+    row.title = phase.detail ?? "";
+    row.append(identity, track, metric);
+    elements.inferenceWaterfall.append(row);
+  });
+
+  const transportNote = Number.isFinite(roundTrip)
+    ? ` Browser-observed round trip: ${modelMetric(roundTrip, 1)} ms; transport, proxying, and JSON work are not placed on the worker clock.`
+    : "";
+  elements.inferenceWaterfallNote.textContent = `${profile.note ?? "Worker-side phase timings."}${transportNote}`;
 }
 
 function renderModelRunSummary(run) {
@@ -3385,8 +3481,18 @@ function renderLogitLens(lens) {
   elements.logitLensNote.textContent = `${lens.sampled ? `${lens.stages.length} of ${lens.totalStages} stages sampled. ` : ""}${lens.evidence?.note ?? "Logit-lens results are observational."}`;
 }
 
+function applyRuntimeCapabilityVisibility(run = null) {
+  const capabilities = run?.diagnostics?.capabilities;
+  document.querySelectorAll("[data-runtime-capability]").forEach((surface) => {
+    const required = String(surface.dataset.runtimeCapability ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+    surface.hidden = capabilities ? required.some((capability) => capabilities[capability] !== true) : false;
+  });
+}
+
 function renderRuntimeResult(run) {
+  applyRuntimeCapabilityVisibility(run);
   renderModelRunSummary(run);
+  renderInferenceWaterfall(run);
   renderModelTokens(run);
   renderModelPredictions(run);
   renderLogitLens(run.logitLens);
@@ -3664,14 +3770,17 @@ async function runDebugIntervention() {
   }
   setRuntimeBusy(true, `Running ${method} intervention…`);
   try {
+    const scope = elements.debugInterventionScope.value;
     const result = await runtimeApi("/intervene", { method: "POST", body: {
       baseRunId: baseRun.runId,
       sourceRunId,
       component,
       method,
       scale: Number(elements.debugInterventionScale.value),
-      scope: elements.debugInterventionScope.value,
-      position: baseRun.position,
+      scope,
+      // The UI's selected-token scope means the final prompt position. Keep it
+      // relative so verification replays it correctly on different-length prompts.
+      position: scope === "position" ? -1 : baseRun.position,
       metric: behaviourMetricSpec()
     } });
     state.debug.interventions.push(result);
@@ -4131,6 +4240,11 @@ async function runFixVerification() {
 function renderGenerationStepLens(step, container) {
   container.replaceChildren();
   const lens = step.logitLens;
+  if (!lens?.available || !lens.stages?.length) {
+    container.hidden = true;
+    return;
+  }
+  container.hidden = false;
   const heading = document.createElement("div");
   heading.className = "generation-step-lens-heading";
   const title = document.createElement("strong");
@@ -4139,13 +4253,6 @@ function renderGenerationStepLens(step, container) {
   context.textContent = `${step.selection} · chosen rank #${step.chosenRank} · entropy ${modelMetric(step.entropy, 3)} nats`;
   heading.append(title, context);
   container.append(heading);
-  if (!lens?.available || !lens.stages?.length) {
-    const note = document.createElement("p");
-    note.className = "debugger-science-note";
-    note.textContent = lens?.evidence?.note ?? "No compatible logit-lens stages were returned for this token.";
-    container.append(note);
-    return;
-  }
   const chart = document.createElement("div");
   chart.className = "model-chart";
   const probabilityLabel = lens.method === "normalized-logit-lens" ? "Chosen-token probability (%)" : "Raw-lens softmax (%)";
@@ -4200,8 +4307,14 @@ function renderGenerationTimeline(trace) {
   const evidence = document.createElement("p");
   evidence.className = "debugger-science-note";
   evidence.textContent = `${trace.evidence?.note ?? "Autoregressive generation trace."} ${trace.evidence?.sampling ?? ""}`;
-  elements.generationTimelineResult.append(summary, timeline, lensPanel, evidence);
-  if (trace.steps?.[0]) renderGenerationStepLens(trace.steps[0], lensPanel);
+  const lensAvailable = (trace.steps ?? []).some((step) => step.logitLens?.available && step.logitLens?.stages?.length);
+  elements.generationTimelineResult.append(summary, timeline);
+  if (lensAvailable) {
+    elements.generationTimelineResult.append(lensPanel);
+    const firstLensStep = (trace.steps ?? []).find((step) => step.logitLens?.available && step.logitLens?.stages?.length);
+    if (firstLensStep) renderGenerationStepLens(firstLensStep, lensPanel);
+  }
+  elements.generationTimelineResult.append(evidence);
   elements.generationTimelineResult.hidden = false;
 }
 
@@ -4214,8 +4327,9 @@ async function runGenerationTrace() {
   }
   const doSample = elements.generationMode.value === "sample";
   const maximumTokens = Number(elements.generationMaxTokens.value) || 8;
+  const lensSupported = state.runtime.latestRun?.diagnostics?.capabilities?.logitLens !== false;
   const maximumStages = Number(elements.generationLensStages.value) || 16;
-  if (maximumTokens * maximumStages > 256) {
+  if (lensSupported && maximumTokens * maximumStages > 256) {
     elements.generationTimelineResult.hidden = false;
     elements.generationTimelineResult.textContent = "New tokens × lens stages must be 256 or less. Reduce either control to keep the trace bounded.";
     elements.generationLensStages.focus();
@@ -4235,7 +4349,7 @@ async function runGenerationTrace() {
         topK: 0
       },
       logitLens: {
-        enabled: true,
+        enabled: lensSupported,
         maxStages: maximumStages,
         topK: 3
       }

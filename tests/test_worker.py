@@ -4,6 +4,7 @@ import importlib.util
 import unittest
 
 from workers.modeldebugger_worker import (
+    InferenceWaterfall,
     _attribution_summary,
     _layer_index,
     _logit_lens_timeline,
@@ -22,6 +23,18 @@ from workers.modeldebugger_worker import (
 
 
 class WorkerTests(unittest.TestCase):
+    def test_inference_waterfall_uses_contiguous_monotonic_phases(self) -> None:
+        readings = iter([10.0, 10.002, 10.007])
+        waterfall = InferenceWaterfall(clock=lambda: next(readings))
+        waterfall.finish("tokenization", "Tokenization", "cpu", "Encode input.")
+        waterfall.finish("model-forward", "Instrumented model forward", "model", "Run model.")
+        snapshot = waterfall.snapshot()
+        self.assertAlmostEqual(snapshot["totalMs"], 7.0)
+        self.assertAlmostEqual(snapshot["phases"][0]["durationMs"], 2.0)
+        self.assertAlmostEqual(snapshot["phases"][1]["startMs"], snapshot["phases"][0]["endMs"])
+        self.assertAlmostEqual(sum(phase["share"] for phase in snapshot["phases"]), 1.0)
+        self.assertIn("not raw serving latency", snapshot["note"])
+
     def test_generic_hook_module_classification(self) -> None:
         self.assertEqual(_layer_index("model.layers.12.self_attn"), 12)
         self.assertEqual(_module_category("model.layers.12.self_attn"), "attention")

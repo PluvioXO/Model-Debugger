@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from refusalscope.daytona import DAYTONA_GPU_ORDER, _sandbox_create_params, recommend_gpu
+from refusalscope.daytona import DAYTONA_GPU_ORDER, _provisioning_error, _sandbox_create_params, recommend_gpu
 
 
 class DaytonaRecommendationTests(unittest.TestCase):
@@ -28,6 +28,13 @@ class DaytonaRecommendationTests(unittest.TestCase):
         self.assertEqual(params.values["auto_stop_interval"], 0)
         self.assertNotIn("auto_delete_interval", params.values)
         self.assertEqual(params.values["resources"].values["gpu"], 1)
+
+    def test_missing_spot_credits_never_suggests_an_on_demand_fallback(self) -> None:
+        error = _provisioning_error(RuntimeError("Organization doesn't have spot GPU credits. Add more."))
+        message = str(error)
+        self.assertIn("does not have spot GPU credits", message)
+        self.assertIn("will not fall back to on-demand", message)
+        self.assertIn("Local machine", message)
 
     def test_small_model_uses_the_smallest_supported_gpu(self) -> None:
         result = recommend_gpu({"parameterCount": 1_000_000_000, "checkpointBytes": 2_000_000_000})

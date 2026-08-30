@@ -93,6 +93,10 @@ class ServerTests(unittest.TestCase):
         self.assertIn("ModelDebugger", self.request("/").body.decode())
         self.assertIn("routeGraphEdge", self.request("/src/graph-routing.js").body.decode())
         self.assertIn("normaliseBenchmarkExamples", self.request("/src/benchmark.js").body.decode())
+        tutorial_capture = self.request("/assets/tutorial/03-paired-comparison.png")
+        self.assertEqual(tutorial_capture.status, 200)
+        self.assertEqual(tutorial_capture.headers["Content-Type"], "image/png")
+        self.assertTrue(tutorial_capture.body.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertEqual(self.request("/colab/ModelDebugger_Worker.ipynb").status, 404)
         self.assertEqual(self.request("/colab/modeldebugger_worker.py").status, 404)
         self.assertEqual(self.request("/src/model.js").status, 404)
@@ -215,7 +219,7 @@ class ServerTests(unittest.TestCase):
 
     def test_known_stale_worker_versions_are_rejected(self) -> None:
         self.assertFalse(_worker_version_supported({"version": "0.3.0"}))
-        self.assertTrue(_worker_version_supported({"version": "0.3.1"}))
+        self.assertFalse(_worker_version_supported({"version": "0.3.1"}))
         self.assertTrue(_worker_version_supported({"version": "0.4.0-beta.1"}))
         self.assertFalse(_worker_version_supported({"version": "development"}))
         self.assertTrue(_worker_version_supported({}))
@@ -315,7 +319,7 @@ class ServerTests(unittest.TestCase):
     def test_local_worker_can_be_discovered_without_pasting_a_secret(self, request_worker) -> None:
         request_worker.return_value = HTTPResponse(
             status=200,
-            body=json.dumps({"ok": True, "version": "0.3.1", "modelLoaded": False}).encode(),
+            body=json.dumps({"ok": True, "version": "0.4.0", "modelLoaded": False}).encode(),
         )
         with tempfile.TemporaryDirectory() as directory:
             session_file = Path(directory) / "local-worker.json"

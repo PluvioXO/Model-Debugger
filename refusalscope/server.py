@@ -27,7 +27,7 @@ RUNTIME_COOKIE_PATH = "/api/runtime"
 RUNTIME_SESSION_SECONDS = 24 * 60 * 60
 MAX_JSON_REQUEST_BYTES = 10 * 1024 * 1024
 RUNTIME_TIMEOUT_SECONDS = 20 * 60
-MINIMUM_WORKER_VERSION = (0, 3, 1)
+MINIMUM_WORKER_VERSION = (0, 4, 0)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATIC_FILES = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
@@ -37,6 +37,11 @@ STATIC_FILES = {
     "/src/debugger.js": ("src/debugger.js", "text/javascript; charset=utf-8"),
     "/src/presentation.js": ("src/presentation.js", "text/javascript; charset=utf-8"),
     "/src/graph-routing.js": ("src/graph-routing.js", "text/javascript; charset=utf-8"),
+    "/assets/tutorial/01-checkpoint-map.png": ("assets/tutorial/01-checkpoint-map.png", "image/png"),
+    "/assets/tutorial/02-inference-profile.png": ("assets/tutorial/02-inference-profile.png", "image/png"),
+    "/assets/tutorial/03-paired-comparison.png": ("assets/tutorial/03-paired-comparison.png", "image/png"),
+    "/assets/tutorial/04-intervention-result.png": ("assets/tutorial/04-intervention-result.png", "image/png"),
+    "/assets/tutorial/05-verification-result.png": ("assets/tutorial/05-verification-result.png", "image/png"),
 }
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.~\-]{1,2048}$")
 MODEL_PATTERN = re.compile(r"^[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)?$")

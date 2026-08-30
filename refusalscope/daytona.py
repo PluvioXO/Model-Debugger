@@ -168,6 +168,18 @@ def _sandbox_create_params(
     )
 
 
+def _provisioning_error(error: Exception) -> DaytonaError:
+    message = str(error).strip()
+    lowered = message.lower()
+    if "spot" in lowered and "credit" in lowered:
+        return DaytonaError(
+            "Your Daytona organization does not have spot GPU credits. ModelDebugger only provisions spot GPUs "
+            "and will not fall back to on-demand capacity. Add spot-eligible credits in Daytona or choose Local "
+            "machine above."
+        )
+    return DaytonaError(f"Daytona provisioning failed: {message or error.__class__.__name__}")
+
+
 def provision_runtime(
     api_key: str,
     payload: dict[str, Any],
@@ -285,7 +297,7 @@ def provision_runtime(
                 client.delete(sandbox, timeout=120, wait=True)
             except Exception:
                 pass
-        raise DaytonaError(f"Daytona provisioning failed: {error}") from error
+        raise _provisioning_error(error) from error
 
 
 def delete_runtime(api_key: str, sandbox_id: str) -> None:
