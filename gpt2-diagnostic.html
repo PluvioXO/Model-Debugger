@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A preloaded, evidence-labelled GPT-2 mechanistic interpretability diagnostic: paired traces, component activation patches, and a bounded causal conclusion." />
+    <title>GPT-2 Capital Diagnostic — ModelDebugger</title>
+    <link rel="stylesheet" href="/gpt2-diagnostic.css" />
+  </head>
+  <body>
+    <header class="demo-topbar">
+      <a class="demo-brand" href="/#home" aria-label="ModelDebugger home"><span class="demo-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>ModelDebugger</strong><small>Research record</small></span></a>
+      <nav aria-label="Diagnostic sections"><a href="#question">Question</a><a href="#observe">Observe</a><a href="#intervene">Intervene</a><a href="#diagnosis">Diagnosis</a></nav>
+      <a class="demo-workspace-link" href="/#workspace">Open workspace <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main>
+      <section class="demo-hero" aria-labelledby="demoTitle">
+        <div class="demo-hero-grid" aria-hidden="true"></div>
+        <div class="demo-hero-copy">
+          <p class="demo-eyebrow">Research diagnostic · GPT-2 · recorded results</p>
+          <h1 id="demoTitle">Where does GPT‑2 separate<br /><em>Paris</em> from Berlin?</h1>
+          <p class="demo-lede">A complete mechanistic-interpretability flow using a matched prompt pair, a declared behaviour metric, observational trace comparison, and component-level activation patching.</p>
+          <div class="demo-hero-actions"><a href="#question">Read the diagnostic <span aria-hidden="true">↓</span></a><span><i aria-hidden="true"></i>Preloaded · no worker required</span></div>
+        </div>
+        <aside class="demo-verdict-card" aria-label="Diagnostic summary">
+          <div><span>DIAGNOSTIC 01</span><b>CAUSAL · PAIR-SPECIFIC</b></div>
+          <p>Reference-patching the <strong>layer 9 attention output</strong> at the final prompt position flips the Paris−Berlin logit margin.</p>
+          <dl><div><dt>Clean margin</dt><dd>+3.013</dd></div><div><dt>Patched margin</dt><dd>−1.018</dd></div><div><dt>Signed effect</dt><dd>−4.031</dd></div></dl>
+          <small>This is a causal result for one intervention and prompt pair—not a universal interpretation of layer 9.</small>
+        </aside>
+      </section>
+
+      <section class="demo-provenance" aria-label="Recorded run provenance">
+        <div><span>MODEL</span><strong>openai-community/gpt2</strong><small>12 blocks · 124M</small></div>
+        <div><span>PINNED COMMIT</span><strong>607a30d783df</strong><small>full SHA in record</small></div>
+        <div><span>EXECUTION</span><strong>Apple MPS · float32</strong><small>seed 0 · raw text</small></div>
+        <div><span>CAPTURED</span><strong id="provenanceCapturedAt">30 Aug 2026</strong><small>worker 0.4.0</small></div>
+      </section>
+
+      <nav class="demo-flow" aria-label="Research flow">
+        <a href="#question"><span>01</span><strong>Define</strong><small>Pair + metric</small></a>
+        <i aria-hidden="true">→</i>
+        <a href="#observe"><span>02</span><strong>Observe</strong><small>Trace divergence</small></a>
+        <i aria-hidden="true">→</i>
+        <a href="#intervene"><span>03</span><strong>Intervene</strong><small>Activation patch</small></a>
+        <i aria-hidden="true">→</i>
+        <a href="#diagnosis"><span>04</span><strong>Diagnose</strong><small>Bound the claim</small></a>
+      </nav>
+
+      <section id="question" class="demo-section" aria-labelledby="questionTitle">
+        <header class="demo-section-heading"><span>01 · DEFINE</span><div><h2 id="questionTitle">Make the claim testable.</h2><p>Only one lexical item changes. The metric is fixed before inspecting activations.</p></div><b>EXPERIMENT DESIGN</b></header>
+        <div class="demo-question-grid">
+          <article class="demo-prompt-card selected"><div><span>SELECTED</span><b>Expected: Paris &gt; Berlin</b></div><div id="selectedTokens" class="demo-token-row" aria-label="Selected prompt tokens"></div><p>“The capital of France is”</p></article>
+          <article class="demo-prompt-card reference"><div><span>REFERENCE</span><b>Expected: Berlin &gt; Paris</b></div><div id="referenceTokens" class="demo-token-row" aria-label="Reference prompt tokens"></div><p>“The capital of Germany is”</p></article>
+          <aside class="demo-metric-card"><span>PREDECLARED METRIC</span><h3>logit(<em> Paris</em>) − logit(<em> Berlin</em>)</h3><div><p><small>Correct token</small><strong>ĠParis · 6342</strong></p><p><small>Contrast token</small><strong>ĠBerlin · 11307</strong></p><p><small>Direction</small><strong>Maximise</strong></p></div><small>Leading spaces are part of both GPT‑2 tokens. The intervention is evaluated at final prompt token 4, “ is”.</small></aside>
+        </div>
+        <aside class="demo-hypothesis"><span>HYPOTHESIS</span><p>The country-conditioned Paris-versus-Berlin preference is carried by a late attention write at the final prompt position.</p><small>“Late attention” is falsifiable here; “GPT‑2 stores capitals in layer 9” is not established by this design.</small></aside>
+      </section>
+
+      <section id="observe" class="demo-section" aria-labelledby="observeTitle">
+        <header class="demo-section-heading"><span>02 · OBSERVE</span><div><h2 id="observeTitle">Find a candidate, not a cause.</h2><p>Paired forward passes expose output and activation differences under the same model, seed, token position, and metric.</p></div><b class="observational">OBSERVATIONAL</b></header>
+        <div class="demo-readout-grid">
+          <article class="demo-readout positive"><span>SELECTED MARGIN</span><strong id="selectedMetricValue">+3.013</strong><small>Paris over Berlin · logits</small></article>
+          <article class="demo-readout negative"><span>REFERENCE MARGIN</span><strong id="referenceMetricValue">−3.694</strong><small>Paris under Berlin · logits</small></article>
+          <article class="demo-readout"><span>PAIR DIFFERENCE</span><strong id="metricDifferenceValue">+6.707</strong><small>selected − reference</small></article>
+          <article class="demo-readout"><span>OUTPUT KL</span><strong id="outputKlValue">0.456</strong><small>reference → selected</small></article>
+        </div>
+        <div class="demo-analysis-grid">
+          <article class="demo-chart-card is-wide"><header><div><span>TRACE DIVERGENCE</span><h3>Late separation dominates</h3></div><small>composite divergence score · by layer</small></header><div id="divergenceChart" class="demo-svg-chart"></div><p>The first material divergence is flagged at layer 4; the largest residual-trace differences occur at layers 9–10.</p></article>
+          <article class="demo-chart-card"><header><div><span>NEXT-TOKEN DISTRIBUTION</span><h3>Same top token, different city evidence</h3></div></header><div id="predictionComparison" class="demo-prediction-comparison"></div><p>The metric compares the city tokens directly; it does not pretend the target is GPT‑2’s top prediction.</p></article>
+          <article class="demo-chart-card"><header><div><span>CANDIDATE RANKING</span><h3>Attention enters the shortlist</h3></div><small>difference, not importance</small></header><div id="candidateList" class="demo-candidate-list"></div><p>Layer 9 attention ranks first observationally. That ranking only determines the next intervention.</p></article>
+        </div>
+        <aside class="demo-evidence-note observational"><strong>Observation boundary</strong><p>Divergence identifies where these traces differ. It cannot determine which difference produced the metric change.</p></aside>
+      </section>
+
+      <section id="intervene" class="demo-section" aria-labelledby="interveneTitle">
+        <header class="demo-section-heading"><span>03 · INTERVENE</span><div><h2 id="interveneTitle">Replace one write, keep the question fixed.</h2><p>At each layer, replace the selected-run component output at token 4 with its aligned reference-run activation.</p></div><b class="causal">CAUSAL TEST</b></header>
+        <div class="demo-intervention-spec"><div><span>METHOD</span><strong>Reference activation patch</strong></div><div><span>SCOPE</span><strong>Final prompt position only</strong></div><div><span>GRID</span><strong>3 components × 12 layers</strong></div><div><span>BASELINE</span><strong>+3.013 logits</strong></div></div>
+        <article class="demo-chart-card causal-grid-card"><header><div><span>FULL INTERVENTION GRID</span><h3>Signed change in Paris − Berlin margin</h3></div><small>negative means the Germany activation reduces Paris evidence</small></header><div id="causalHeatmap" class="demo-causal-heatmap"></div><div class="demo-grid-legend"><span><i class="positive"></i>increases margin</span><span><i class="neutral"></i>near zero</span><span><i class="negative"></i>decreases margin</span></div><p>All 36 measured cells are shown. Selecting only the maximum after a sweep would hide the multiple-comparison context.</p></article>
+        <div class="demo-causal-results">
+          <article class="primary"><span>COMPONENT-LEVEL RESULT</span><h3>Layer 9 attention patch</h3><div><p><small>Clean</small><strong>+3.013</strong></p><i aria-hidden="true">→</i><p><small>Patched</small><strong>−1.018</strong></p></div><b>Δ −4.031 logits</b><small>Output KL 0.133 · complete attention output · token position 4</small></article>
+          <article><span>EARLY-LAYER CONTROL</span><h3>Layer 0 attention patch</h3><div><p><small>Clean</small><strong>+3.013</strong></p><i aria-hidden="true">→</i><p><small>Patched</small><strong>+2.980</strong></p></div><b>Δ −0.033 logits</b><small>About 0.8% of the layer 9 attention effect.</small></article>
+          <article><span>ACCUMULATED STATE</span><h3>Layer 10 residual patch</h3><div><p><small>Clean</small><strong>+3.013</strong></p><i aria-hidden="true">→</i><p><small>Patched</small><strong>−3.180</strong></p></div><b>Δ −6.192 logits</b><small>The residual state contains accumulated upstream differences; it is not one module.</small></article>
+        </div>
+        <aside class="demo-evidence-note causal"><strong>Causal boundary</strong><p>The signed effect is causal for this exact patch. It does not prove a natural semantic role, uniqueness, or general importance.</p></aside>
+      </section>
+
+      <section id="diagnosis" class="demo-section diagnosis-section" aria-labelledby="diagnosisTitle">
+        <header class="demo-section-heading"><span>04 · DIAGNOSE</span><div><h2 id="diagnosisTitle">Say exactly what survived the test.</h2><p>A useful diagnostic closes the gap between a measured effect and the broader story we are tempted to tell.</p></div><b>CLAIM BOUNDARY</b></header>
+        <article class="demo-diagnosis-verdict"><span>SUPPORTED DIAGNOSIS</span><h3>For this prompt pair, the Paris-versus-Berlin margin is causally sensitive to the layer 9 attention output at the final prompt position.</h3><p>The observational ranking and the targeted intervention agree. The early-layer control is small, and the effect becomes larger in the downstream residual state.</p></article>
+        <div class="demo-claim-grid">
+          <article class="supported"><span>SUPPORTED BY THIS RECORD</span><ul id="supportedClaims"></ul></article>
+          <article class="unsupported"><span>NOT SUPPORTED</span><ul id="unsupportedClaims"></ul></article>
+        </div>
+        <aside class="demo-next-experiment"><span>NEXT FALSIFICATION</span><p id="nextExperiment"></p></aside>
+      </section>
+
+      <section class="demo-section integrity-section" aria-labelledby="integrityTitle">
+        <header class="demo-section-heading"><span>05 · RUN INTEGRITY</span><div><h2 id="integrityTitle">Keep mechanism separate from runtime.</h2><p>The hook-enabled profile records where this forward pass spent time. Latency is not component importance.</p></div><b>PROVENANCE</b></header>
+        <article class="demo-chart-card"><header><div><span>INFERENCE WATERFALL</span><h3>500 ms worker-side recorded pass</h3></div><small>instrumented · synchronized MPS</small></header><div id="performanceWaterfall" class="demo-performance-waterfall"></div><p id="performanceNote"></p></article>
+        <div class="demo-record-actions"><div><span>PORTABLE RECORD</span><h3>Inspect the exact preloaded values.</h3><p>The page never substitutes simulated values for missing measurements. Full activation tensors were intentionally not embedded.</p></div><button id="copyReproductionButton" type="button">Copy reproduction spec</button><span id="copyStatus" role="status" aria-live="polite"></span></div>
+        <details class="demo-json-record"><summary>View recorded JSON</summary><pre id="recordJson"></pre></details>
+      </section>
+
+      <section class="demo-footer-cta"><p>Ready to test another model or prompt?</p><h2>Open the circuit, then earn the claim.</h2><div><a href="/#workspace">Open ModelDebugger <span aria-hidden="true">→</span></a><a href="/#tutorial">Read the field guide</a></div></section>
+    </main>
+
+    <footer class="demo-footer"><a class="demo-brand" href="/#home"><span class="demo-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>ModelDebugger</strong><small>Transformer Circuit Atlas</small></span></a><p>Recorded diagnostic · observations and interventions labelled separately</p><span>© 2026</span></footer>
+    <script type="module" src="/src/gpt2-diagnostic.js"></script>
+  </body>
+</html>

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
-from refusalscope.daytona import DAYTONA_GPU_ORDER, _provisioning_error, _sandbox_create_params, recommend_gpu
+from refusalscope.daytona import DAYTONA_GPU_ORDER, _provisioning_error, _sandbox_create_params, recommend_gpu, validate_api_key
 
 
 class DaytonaRecommendationTests(unittest.TestCase):
@@ -59,6 +60,71 @@ class DaytonaRecommendationTests(unittest.TestCase):
         self.assertEqual(result["recommendedGpu"], DAYTONA_GPU_ORDER[0])
         self.assertEqual(result["confidence"], "baseline")
         self.assertIsNone(result["estimatedPeakBytes"])
+
+    @patch("refusalscope.daytona._daytona_sdk")
+    def test_api_key_check_uses_one_read_only_list_request(self, sdk) -> None:
+        calls = {}
+
+        class Config:
+            def __init__(self, *, api_key):
+                calls["api_key"] = api_key
+
+        class Query:
+            def __init__(self, *, limit):
+                calls["limit"] = limit
+
+        class AuthenticationError(Exception):
+            pass
+
+        class ForbiddenError(Exception):
+            pass
+
+        class Client:
+            def __init__(self, _config):
+                pass
+
+            def list(self, query, request_timeout=None):
+                calls["query"] = query
+                calls["request_timeout"] = request_timeout
+                return iter([])
+
+        sdk.return_value = (Client, Config, None, None, None, None, Query, AuthenticationError, ForbiddenError)
+        result = validate_api_key("  daytona-test-key  ")
+        self.assertTrue(result["valid"])
+        self.assertIn("No sandbox was created", result["message"])
+        self.assertEqual(calls["api_key"], "daytona-test-key")
+        self.assertEqual(calls["limit"], 1)
+        self.assertEqual(calls["request_timeout"], 20)
+
+    @patch("refusalscope.daytona._daytona_sdk")
+    def test_api_key_check_distinguishes_rejection_from_missing_permissions(self, sdk) -> None:
+        class Config:
+            def __init__(self, *, api_key):
+                self.api_key = api_key
+
+        class Query:
+            def __init__(self, *, limit):
+                self.limit = limit
+
+        class AuthenticationError(Exception):
+            pass
+
+        class ForbiddenError(Exception):
+            pass
+
+        class Client:
+            error = AuthenticationError("unauthorized")
+
+            def __init__(self, _config):
+                pass
+
+            def list(self, _query, request_timeout=None):
+                raise self.error
+
+        sdk.return_value = (Client, Config, None, None, None, None, Query, AuthenticationError, ForbiddenError)
+        self.assertIn("rejected", validate_api_key("bad-key")["message"])
+        Client.error = ForbiddenError("forbidden")
+        self.assertIn("cannot access sandboxes", validate_api_key("limited-key")["message"])
 
 
 if __name__ == "__main__":

@@ -112,7 +112,11 @@ const elements = {
   runtimeGpuReason: document.querySelector("#runtimeGpuReason"),
   runtimeGpuSelect: document.querySelector("#runtimeGpuSelect"),
   runtimeDaytonaApiKeyInput: document.querySelector("#runtimeDaytonaApiKeyInput"),
-  runtimeDaytonaHfTokenInput: document.querySelector("#runtimeDaytonaHfTokenInput"),
+  runtimeDaytonaValidateButton: document.querySelector("#runtimeDaytonaValidateButton"),
+  runtimeDaytonaKeyStatus: document.querySelector("#runtimeDaytonaKeyStatus"),
+  runtimeDaytonaHfAccess: document.querySelector("#runtimeDaytonaHfAccess"),
+  runtimeDaytonaHfStatus: document.querySelector("#runtimeDaytonaHfStatus"),
+  runtimeDaytonaHfDetail: document.querySelector("#runtimeDaytonaHfDetail"),
   copyRuntimeCommandButton: document.querySelector("#copyRuntimeCommandButton"),
   runtimeEndpointInput: document.querySelector("#runtimeEndpointInput"),
   runtimeSecretInput: document.querySelector("#runtimeSecretInput"),
@@ -2271,6 +2275,11 @@ function renderHuggingFaceAccount(statusMessage = "") {
   else elements.hfAccountProfileLink.removeAttribute("href");
   elements.hfAccountStatus.classList.remove("error");
   elements.hfAccountStatus.textContent = statusMessage;
+  elements.runtimeDaytonaHfAccess.dataset.state = account ? "inherited" : "public";
+  elements.runtimeDaytonaHfStatus.textContent = account ? `Inherited from @${accountName}` : "Public repositories only";
+  elements.runtimeDaytonaHfDetail.textContent = account
+    ? "A new Daytona sandbox receives this validated read token directly from the loopback server. The browser never receives it."
+    : "Connect a Hugging Face account above to inherit its read access in new Daytona sandboxes.";
   setHuggingFaceAccountFormOpen(false);
 }
 
@@ -2866,6 +2875,36 @@ async function connectRuntime() {
   }
 }
 
+function renderDaytonaKeyValidation(status = "idle", message = "") {
+  elements.runtimeDaytonaKeyStatus.hidden = !message;
+  elements.runtimeDaytonaKeyStatus.dataset.state = status;
+  elements.runtimeDaytonaKeyStatus.textContent = message;
+  elements.runtimeDaytonaApiKeyInput.setAttribute("aria-invalid", String(status === "invalid" || status === "error"));
+}
+
+async function validateDaytonaApiKey() {
+  const apiKey = elements.runtimeDaytonaApiKeyInput.value.trim();
+  if (!apiKey) {
+    renderDaytonaKeyValidation("invalid", "Enter a Daytona API key before checking it.");
+    elements.runtimeDaytonaApiKeyInput.focus();
+    return;
+  }
+  elements.runtimeDaytonaApiKeyInput.disabled = true;
+  elements.runtimeDaytonaValidateButton.disabled = true;
+  elements.runtimeDaytonaValidateButton.textContent = "Checking…";
+  renderDaytonaKeyValidation("checking", "Checking this key with Daytona. No sandbox will be created.");
+  try {
+    const payload = await runtimeApi("/daytona/validate", { method: "POST", body: { apiKey } });
+    renderDaytonaKeyValidation(payload.valid ? "valid" : "invalid", payload.message ?? (payload.valid ? "Daytona accepted this API key." : "Daytona rejected this API key."));
+  } catch (error) {
+    renderDaytonaKeyValidation("error", String(error?.message ?? error));
+  } finally {
+    elements.runtimeDaytonaApiKeyInput.disabled = false;
+    elements.runtimeDaytonaValidateButton.disabled = !elements.runtimeDaytonaApiKeyInput.value.trim();
+    elements.runtimeDaytonaValidateButton.textContent = "Check API key";
+  }
+}
+
 async function provisionDaytonaRuntime() {
   const apiKey = elements.runtimeDaytonaApiKeyInput.value.trim();
   if (!apiKey) {
@@ -2880,11 +2919,11 @@ async function provisionDaytonaRuntime() {
     const payload = await runtimeApi("/daytona/provision", { method: "POST", body: {
       ...daytonaModelDetails(),
       apiKey,
-      hfToken: elements.runtimeDaytonaHfTokenInput.value.trim(),
       gpuType: elements.runtimeGpuSelect.value
     } });
     elements.runtimeDaytonaApiKeyInput.value = "";
-    elements.runtimeDaytonaHfTokenInput.value = "";
+    renderDaytonaKeyValidation();
+    elements.runtimeDaytonaValidateButton.disabled = true;
     state.runtime.recommendation = payload.recommendation ?? state.runtime.recommendation;
     renderRuntimeConnection(payload);
   } catch (error) {
@@ -5170,6 +5209,7 @@ document.addEventListener("keydown", (event) => {
 elements.runtimeConnectButton.addEventListener("click", connectRuntime);
 elements.runtimeModeLocal.addEventListener("click", () => setRuntimeMode("local"));
 elements.runtimeModeDaytona.addEventListener("click", () => setRuntimeMode("daytona"));
+elements.runtimeDaytonaValidateButton.addEventListener("click", validateDaytonaApiKey);
 elements.copyRuntimeCommandButton.addEventListener("click", copyRuntimeCommand);
 elements.runtimeDisconnectButton.addEventListener("click", disconnectRuntime);
 elements.runtimeLoadButton.addEventListener("click", loadRuntimeModel);
@@ -5185,7 +5225,11 @@ elements.modelRunSettingsButton.addEventListener("click", () => {
 });
 elements.runtimeEndpointInput.addEventListener("input", () => elements.runtimeStatus.classList.remove("error"));
 elements.runtimeSecretInput.addEventListener("input", () => elements.runtimeStatus.classList.remove("error"));
-elements.runtimeDaytonaApiKeyInput.addEventListener("input", () => elements.runtimeStatus.classList.remove("error"));
+elements.runtimeDaytonaApiKeyInput.addEventListener("input", () => {
+  elements.runtimeStatus.classList.remove("error");
+  renderDaytonaKeyValidation();
+  elements.runtimeDaytonaValidateButton.disabled = !elements.runtimeDaytonaApiKeyInput.value.trim();
+});
 window.addEventListener("hashchange", () => {
   setAppView(appViewFromHash(), { focus: false, updateHistory: false });
 });

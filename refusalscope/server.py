@@ -14,13 +14,15 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, unquote, urlsplit
 
 from .config import DEFAULT_PORT
-from .daytona import DaytonaError, delete_runtime, provision_runtime, recommend_gpu
+from .daytona import DaytonaError, delete_runtime, provision_runtime, recommend_gpu, validate_api_key
 from .debug_store import DebugStore, DebugStoreError
 from .huggingface import InspectionError, inspect_account, inspect_model
 from .http_client import HTTPResponse, http_request
 
 COOKIE_NAME = "refusalscope_hf_session"
 COOKIE_PATH = "/api/huggingface"
+DAYTONA_HF_COOKIE_NAME = "refusalscope_hf_daytona_session"
+DAYTONA_HF_COOKIE_PATH = "/api/runtime/daytona/provision"
 SESSION_SECONDS = 30 * 24 * 60 * 60
 RUNTIME_COOKIE_NAME = "refusalscope_runtime_session"
 RUNTIME_COOKIE_PATH = "/api/runtime"
@@ -243,6 +245,8 @@ class RefusalScopeHandler(BaseHTTPRequestHandler):
             self._handle_runtime_connect()
         elif path == "/api/runtime/daytona/recommend":
             self._handle_daytona_recommend()
+        elif path == "/api/runtime/daytona/validate":
+            self._handle_daytona_validate()
         elif path == "/api/runtime/daytona/provision":
             self._handle_daytona_provision()
         elif path == "/api/runtime/disconnect":
@@ -297,7 +301,7 @@ class RefusalScopeHandler(BaseHTTPRequestHandler):
             scheme, separator, token = authorization.partition(" ")
             valid = bool(separator and scheme.lower() == "bearer" and TOKEN_PATTERN.fullmatch(token))
             return token if valid else "", True, valid, False
-        session_id = self._cookie_value(COOKIE_NAME)
+        session_id = self._cookie_value(COOKIE_NAME) or self._cookie_value(DAYTONA_HF_COOKIE_NAME)
         if not session_id:
             return "", False, True, False
         if not TOKEN_PATTERN.fullmatch(session_id):
@@ -330,11 +334,11 @@ class RefusalScopeHandler(BaseHTTPRequestHandler):
                 self._send_error(_api_error_status(error.status), str(error))
             return
         session_id = self._cookie_value(COOKIE_NAME) if from_cookie else self.server.state.create_session(token)
-        self._send_json(200, account, set_cookie=_persistent_cookie(session_id))
+        self._send_json(200, account, set_cookie=_persistent_hf_cookies(session_id))
 
     def _handle_logout(self) -> None:
         self._discard_request_session()
-        self._send_json(200, {"ok": True}, set_cookie=_expired_cookie())
+        self._send_json(200, {"ok": True}, set_cookie=_expired_hf_cookies())
 
     def _handle_model(self, query: str) -> None:
         parameters = parse_qs(query, keep_blank_values=True)
@@ -526,16 +530,42 @@ class RefusalScopeHandler(BaseHTTPRequestHandler):
         if payload is not None:
             self._send_json(200, recommend_gpu(payload))
 
-    def _handle_daytona_provision(self) -> None:
+    def _handle_daytona_validate(self) -> None:
         payload = self._request_json()
         if payload is None:
             return
         raw_api_key = payload.get("apiKey", "")
         api_key = raw_api_key.strip() if isinstance(raw_api_key, str) else ""
         try:
+            result = validate_api_key(api_key)
+        except DaytonaError as error:
+            self._send_error(502, str(error))
+            return
+        self._send_json(200, result)
+
+    def _handle_daytona_provision(self) -> None:
+        payload = self._request_json()
+        if payload is None:
+            return
+        request_token, present, valid, from_cookie = self._user_token()
+        if present and not valid:
+            message = "The saved Hugging Face session was invalid" if from_cookie else "Use a valid Hugging Face Bearer token"
+            self._send_error(400, message, expire_cookie=from_cookie)
+            return
+        hf_token = request_token if present else self.server.state.server_token
+        provision_payload = dict(payload)
+        # Browser-supplied Hugging Face credentials are deliberately ignored.
+        # Only a validated, server-held account session (or server HF_TOKEN)
+        # may cross into the private Daytona sandbox.
+        provision_payload.pop("hfToken", None)
+        if hf_token:
+            provision_payload["hfToken"] = hf_token
+        raw_api_key = payload.get("apiKey", "")
+        api_key = raw_api_key.strip() if isinstance(raw_api_key, str) else ""
+        try:
             runtime = provision_runtime(
                 api_key,
-                payload,
+                provision_payload,
                 worker_path=PROJECT_ROOT / "workers" / "modeldebugger_worker.py",
             )
         except DaytonaError as error:
@@ -563,6 +593,7 @@ class RefusalScopeHandler(BaseHTTPRequestHandler):
                 "sandboxId": runtime.sandbox_id,
                 "gpuType": runtime.gpu_type,
                 "quantization": runtime.recommendation.get("quantization", "none"),
+                "huggingFaceAccess": "connected-account" if request_token else "server-token" if hf_token else "public",
                 "recommendation": runtime.recommendation,
                 "worker": {"ok": True, "accelerator": runtime.gpu_type, "modelLoaded": False},
             },
@@ -692,11 +723,11 @@ class RefusalScopeHandler(BaseHTTPRequestHandler):
         self._send_json(
             status,
             {"error": message},
-            set_cookie=_expired_cookie() if expire_cookie else _expired_runtime_cookie() if expire_runtime_cookie else None,
+            set_cookie=_expired_hf_cookies() if expire_cookie else _expired_runtime_cookie() if expire_runtime_cookie else None,
             no_store=no_store,
         )
 
-    def _send_json(self, status: int, payload: object, *, set_cookie: str | None = None, no_store: bool = True) -> None:
+    def _send_json(self, status: int, payload: object, *, set_cookie: str | list[str] | tuple[str, ...] | None = None, no_store: bool = True) -> None:
         self._send(status, "application/json", _json_bytes(payload), no_store=no_store, set_cookie=set_cookie)
 
     def _send(
@@ -706,7 +737,7 @@ class RefusalScopeHandler(BaseHTTPRequestHandler):
         body: bytes,
         *,
         no_store: bool,
-        set_cookie: str | None = None,
+        set_cookie: str | list[str] | tuple[str, ...] | None = None,
     ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -715,7 +746,9 @@ class RefusalScopeHandler(BaseHTTPRequestHandler):
         if no_store:
             self.send_header("Cache-Control", "no-store")
         if set_cookie:
-            self.send_header("Set-Cookie", set_cookie)
+            cookies = [set_cookie] if isinstance(set_cookie, str) else set_cookie
+            for cookie in cookies:
+                self.send_header("Set-Cookie", cookie)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -840,11 +873,33 @@ def _persistent_cookie(session_id: str) -> str:
     )
 
 
+def _daytona_hf_cookie(session_id: str) -> str:
+    return (
+        f"{DAYTONA_HF_COOKIE_NAME}={session_id}; Path={DAYTONA_HF_COOKIE_PATH}; "
+        f"Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Strict"
+    )
+
+
+def _persistent_hf_cookies(session_id: str) -> tuple[str, str]:
+    return _persistent_cookie(session_id), _daytona_hf_cookie(session_id)
+
+
 def _expired_cookie() -> str:
     return (
         f"{COOKIE_NAME}=; Path={COOKIE_PATH}; Max-Age=0; "
         "Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict"
     )
+
+
+def _expired_daytona_hf_cookie() -> str:
+    return (
+        f"{DAYTONA_HF_COOKIE_NAME}=; Path={DAYTONA_HF_COOKIE_PATH}; Max-Age=0; "
+        "Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict"
+    )
+
+
+def _expired_hf_cookies() -> tuple[str, str]:
+    return _expired_cookie(), _expired_daytona_hf_cookie()
 
 
 def _runtime_cookie(session_id: str) -> str:

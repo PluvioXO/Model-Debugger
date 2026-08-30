@@ -127,14 +127,29 @@ def _daytona_sdk() -> tuple[Any, ...]:
             Daytona,
             DaytonaConfig,
             GpuType,
+            ListSandboxesQuery,
             Resources,
             SessionExecuteRequest,
+        )
+        from daytona.common.errors import (  # type: ignore[import-not-found]
+            DaytonaAuthenticationError,
+            DaytonaForbiddenError,
         )
     except ImportError as error:
         raise DaytonaError(
             "Daytona support is not installed. Run `python -m pip install -e .` and restart ModelDebugger."
         ) from error
-    return Daytona, DaytonaConfig, CreateSandboxFromImageParams, Resources, GpuType, SessionExecuteRequest
+    return (
+        Daytona,
+        DaytonaConfig,
+        CreateSandboxFromImageParams,
+        Resources,
+        GpuType,
+        SessionExecuteRequest,
+        ListSandboxesQuery,
+        DaytonaAuthenticationError,
+        DaytonaForbiddenError,
+    )
 
 
 def _api_key(value: str) -> str:
@@ -166,6 +181,36 @@ def _sandbox_create_params(
         labels={"app": "modeldebugger", "managed-by": "modeldebugger"},
         resources=Resources(gpu=1, gpu_type=[GpuType(value) for value in gpu_types]),
     )
+
+
+def validate_api_key(value: str) -> dict[str, Any]:
+    """Validate Daytona credentials with one read-only sandbox-list request."""
+
+    key = _api_key(value)
+    sdk = _daytona_sdk()
+    Daytona, DaytonaConfig = sdk[:2]
+    ListSandboxesQuery, AuthenticationError, ForbiddenError = sdk[6:9]
+    try:
+        client = Daytona(DaytonaConfig(api_key=key))
+        # Consuming only the first item forces one bounded API request and does
+        # not traverse further pages or create, start, stop, or delete anything.
+        next(client.list(ListSandboxesQuery(limit=1), request_timeout=20), None)
+    except AuthenticationError:
+        return {
+            "valid": False,
+            "message": "Daytona rejected this API key. Check that it is current and copied in full.",
+        }
+    except ForbiddenError:
+        return {
+            "valid": False,
+            "message": "This key authenticated but cannot access sandboxes in its Daytona organization.",
+        }
+    except Exception as error:
+        raise DaytonaError(f"Could not check the Daytona API key: {str(error).strip() or error.__class__.__name__}") from error
+    return {
+        "valid": True,
+        "message": "Daytona accepted this API key. No sandbox was created.",
+    }
 
 
 def _provisioning_error(error: Exception) -> DaytonaError:
@@ -203,7 +248,7 @@ def provision_runtime(
             )
     if not worker_path.is_file():
         raise DaytonaError("The bundled execution worker is missing from this installation.")
-    Daytona, DaytonaConfig, Params, Resources, GpuType, SessionExecuteRequest = _daytona_sdk()
+    Daytona, DaytonaConfig, Params, Resources, GpuType, SessionExecuteRequest, *_ = _daytona_sdk()
 
     secret = secrets.token_urlsafe(32)
     env_vars = {"MODELDEBUGGER_WORKER_SECRET": secret}
@@ -211,7 +256,7 @@ def provision_runtime(
     hf_token = raw_hf_token.strip() if isinstance(raw_hf_token, str) else ""
     if hf_token:
         if len(hf_token) > 2048 or any(character.isspace() for character in hf_token):
-            raise DaytonaError("The optional Hugging Face token format is invalid.")
+            raise DaytonaError("The inherited Hugging Face token format is invalid.")
         env_vars["HF_TOKEN"] = hf_token
 
     client = Daytona(DaytonaConfig(api_key=key))

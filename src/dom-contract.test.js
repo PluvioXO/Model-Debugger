@@ -94,10 +94,21 @@ test("GPT-2 development fixture uses the ordinary Hugging Face workflow", () => 
   assert.doesNotMatch(application, /synthetic activation/i);
 });
 
+test("selected-token interventions replay against each prompt's final token", () => {
+  assert.match(application, /position: scope === "position" \? -1 : baseRun\.position/);
+});
+
 test("Daytona is the default managed runtime and API keys are not persisted client-side", () => {
   assert.match(html, /id="runtimeModeDaytona"[^>]*aria-pressed="true"/);
   assert.match(html, /id="runtimeDaytonaApiKeyInput"[^>]*type="password"/);
+  assert.match(html, /id="runtimeDaytonaValidateButton"[^>]*disabled>Check API key<\/button>/);
+  assert.match(html, /id="runtimeDaytonaKeyStatus"[^>]*aria-live="polite"/);
+  assert.match(html, /id="runtimeDaytonaHfAccess"[^>]*data-state="public"/);
+  assert.match(html, /id="runtimeDaytonaHfStatus"/);
+  assert.doesNotMatch(html, /id="runtimeDaytonaHfTokenInput"/);
   assert.match(application, /runtimeApi\("\/daytona\/provision"/);
+  assert.match(application, /runtimeApi\("\/daytona\/validate"/);
+  assert.doesNotMatch(application, /hfToken:/);
   assert.match(application, /setRuntimeMode\("daytona"\)/);
   assert.doesNotMatch(html, /Google Colab|trycloudflare/i);
   assert.doesNotMatch(application, /localStorage\.setItem\([^)]*Daytona/i);

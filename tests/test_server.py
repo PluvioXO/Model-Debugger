@@ -112,6 +112,10 @@ class ServerTests(unittest.TestCase):
         self.assertIn("HttpOnly", set_cookie)
         self.assertIn("SameSite=Strict", set_cookie)
         self.assertIn("Max-Age=2592000", set_cookie)
+        account_cookies = connected.headers.get_all("Set-Cookie")
+        self.assertEqual(len(account_cookies), 2)
+        self.assertTrue(any("refusalscope_hf_daytona_session=" in cookie for cookie in account_cookies))
+        self.assertTrue(any("Path=/api/runtime/daytona/provision" in cookie for cookie in account_cookies))
 
         restored = self.request("/api/huggingface/account")
         self.assertEqual(restored.status, 200)
@@ -119,7 +123,9 @@ class ServerTests(unittest.TestCase):
 
         logged_out = self.request("/api/huggingface/logout", method="POST")
         self.assertEqual(logged_out.status, 200)
-        self.assertIn("Max-Age=0", logged_out.headers["Set-Cookie"])
+        logout_cookies = logged_out.headers.get_all("Set-Cookie")
+        self.assertEqual(len(logout_cookies), 2)
+        self.assertTrue(all("Max-Age=0" in cookie for cookie in logout_cookies))
         self.assertEqual(self.request("/api/huggingface/account").status, 401)
 
     def test_request_validation(self) -> None:
@@ -286,6 +292,7 @@ class ServerTests(unittest.TestCase):
                 "modelId": "test/model",
                 "parameterCount": 1_000_000_000,
                 "checkpointBytes": 2_000_000_000,
+                "hfToken": "browser-injected-token",
             },
         )
         self.assertEqual(provisioned.status, 200)
@@ -294,6 +301,7 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("apiKey", payload)
         self.assertNotIn("preview-secret", provisioned.body.decode())
         self.assertNotIn("worker-secret", provisioned.body.decode())
+        self.assertNotIn("hfToken", provision.call_args.args[1])
 
         request_worker.return_value = HTTPResponse(status=200, body=b'{"ok":true,"runId":"daytona-run"}')
         forwarded = self.request("/api/runtime/forward", method="POST", json_body={"prompt": "Test"})
@@ -303,6 +311,43 @@ class ServerTests(unittest.TestCase):
         disconnected = self.request("/api/runtime/disconnect", method="POST", json_body={})
         self.assertEqual(disconnected.status, 200)
         delete.assert_called_once_with("daytona-user-key", "sandbox-test")
+
+    @patch("refusalscope.server.delete_runtime")
+    @patch("refusalscope.server.provision_runtime")
+    def test_daytona_inherits_the_validated_hugging_face_session(self, provision, delete) -> None:
+        provision.return_value = ProvisionedRuntime(
+            endpoint="https://8765-test.proxy.daytona.works",
+            preview_token="preview-secret",
+            secret="worker-secret",
+            sandbox_id="sandbox-inherited-token",
+            gpu_type="RTX-4090",
+            recommendation={"recommendedGpu": "RTX-4090", "quantization": "none"},
+        )
+        connected = self.request(
+            "/api/huggingface/account", headers={"Authorization": "Bearer hf_inherited-token"}
+        )
+        self.assertEqual(connected.status, 200)
+
+        provisioned = self.request(
+            "/api/runtime/daytona/provision",
+            method="POST",
+            json_body={
+                "apiKey": "daytona-user-key",
+                "gpuType": "auto",
+                "modelId": "private/model",
+                "parameterCount": 1_000_000_000,
+                "checkpointBytes": 2_000_000_000,
+            },
+        )
+        self.assertEqual(provisioned.status, 200)
+        self.assertEqual(provision.call_args.args[1]["hfToken"], "hf_inherited-token")
+        response_payload = json.loads(provisioned.body)
+        self.assertEqual(response_payload["huggingFaceAccess"], "connected-account")
+        self.assertNotIn("hf_inherited-token", provisioned.body.decode())
+
+        disconnected = self.request("/api/runtime/disconnect", method="POST", json_body={})
+        self.assertEqual(disconnected.status, 200)
+        delete.assert_called_once_with("daytona-user-key", "sandbox-inherited-token")
 
     def test_daytona_recommendation_route_does_not_provision(self) -> None:
         response = self.request(
@@ -314,6 +359,25 @@ class ServerTests(unittest.TestCase):
         payload = json.loads(response.body)
         self.assertEqual(payload["recommendedGpu"], "RTX-4090")
         self.assertEqual(payload["quantization"], "none")
+
+    @patch("refusalscope.server.provision_runtime")
+    @patch("refusalscope.server.validate_api_key")
+    def test_daytona_api_key_check_never_provisions_or_returns_the_key(self, validate, provision) -> None:
+        validate.return_value = {
+            "valid": True,
+            "message": "Daytona accepted this API key. No sandbox was created.",
+        }
+        response = self.request(
+            "/api/runtime/daytona/validate",
+            method="POST",
+            json_body={"apiKey": "daytona-secret-key"},
+        )
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertTrue(payload["valid"])
+        self.assertNotIn("daytona-secret-key", response.body.decode())
+        validate.assert_called_once_with("daytona-secret-key")
+        provision.assert_not_called()
 
     @patch("refusalscope.server.runtime_request")
     def test_local_worker_can_be_discovered_without_pasting_a_secret(self, request_worker) -> None:

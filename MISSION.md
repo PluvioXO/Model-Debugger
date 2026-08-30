@@ -51,7 +51,7 @@ Current and future work should strengthen the following capabilities:
 - Link every observation and intervention result back to its graph node, edge, tensor, layer, head, token position, target token, and run context.
 - Fetch bounded activation slices lazily instead of moving unrestricted activation caches into the browser.
 - Retain experiment history and export a portable record that another researcher can rerun and inspect.
-- Preserve authenticated Hugging Face identity and worker sessions securely without exposing access tokens to page scripts.
+- Preserve authenticated Hugging Face identity and worker sessions securely without exposing access tokens to page scripts. Managed Daytona sandboxes should inherit the validated server-held Hugging Face credential automatically through a least-privilege opaque session reference, never a second browser token field.
 
 ## Hugging Face resolver contract
 
